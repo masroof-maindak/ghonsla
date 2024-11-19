@@ -6,6 +6,28 @@
 
 extern FILE *fs;
 
+/**
+ * @detail if adding `add` bytes to `buf`, (whose maximum capacity is
+ * `capacity` and currently has `idx` bytes written), would overflow it, then
+ * double `buf`. `capacity` is updated in this case.
+ *
+ * @return NULL on failure, buffer on success
+ */
+char *double_if_Of(char *buf, size_t idx, size_t add, size_t *capacity) {
+	char *tmp = NULL;
+
+	if (idx + add > *capacity) {
+		*capacity *= 2;
+		if ((tmp = realloc(buf, *capacity)) == NULL) {
+			perror("realloc() in double_if_Of()");
+			free(buf);
+			return NULL;
+		}
+	}
+
+	return buf;
+}
+
 char *copy_string(const char *str) {
 	if (str == NULL) {
 		fprintf(stderr, "copy_string(): receieved null input\n");
@@ -24,9 +46,6 @@ char *copy_string(const char *str) {
 	return copy;
 }
 
-/**
- *
- */
 int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	int ret = 0;
 	long save;
@@ -73,14 +92,14 @@ int write_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* save fpos */
 	save = ftell(fs);
 	if (save == -1) {
-		perror("ftell() in read_block");
+		perror("ftell() in write_block");
 		return -1;
 	}
 
 	/* goto requested fpos */
 	/* CHECK */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() #1 in read_block");
+		perror("fseek() #1 in write_block");
 		ret = -2;
 		goto cleanup;
 	}
