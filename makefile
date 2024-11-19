@@ -1,7 +1,7 @@
 CFLAGS = -Wall -Wextra -pedantic
 # LDFLAGS = -lcurses -lmenu
-DEBUG_FLAGS = -g3
 RELEASE_FLAGS = -march=native -O3
+DEBUG_FLAGS = -g3 -O0
 
 SRCDIR = src
 SRCS = $(wildcard ${SRCDIR}/*.c)

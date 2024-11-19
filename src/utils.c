@@ -4,6 +4,8 @@
 
 #include "../include/utils.h"
 
+extern FILE *fs;
+
 char *copy_string(const char *str) {
 	if (str == NULL) {
 		fprintf(stderr, "copy_string(): receieved null input\n");
@@ -22,3 +24,77 @@ char *copy_string(const char *str) {
 	return copy;
 }
 
+/**
+ *
+ */
+int read_block(size_t blockNo, size_t blockSize, char *buf) {
+	int ret = 0;
+	long save;
+
+	/* save fpos */
+	save = ftell(fs);
+	if (save == -1) {
+		perror("ftell() in read_block");
+		return -1;
+	}
+
+	/* goto requested fpos */
+	/* CHECK */
+	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
+		perror("fseek() #1 in read_block");
+		ret = -2;
+		goto cleanup;
+	}
+
+	/* read chunk */
+	if (fread(buf, 1, blockSize, fs) != blockSize) {
+		if (feof(fs)) {
+			fprintf(stderr, "fread() in read_block - EOF occurred");
+			ret = -3;
+			goto cleanup;
+		} else if (ferror(fs)) {
+			perror("fread() in read_block()");
+			ret = -4;
+			goto cleanup;
+		}
+	}
+
+cleanup:
+	/* goto original fpos */
+	if (fseek(fs, save, SEEK_SET) == -1)
+		return -5;
+	return ret;
+}
+
+int write_block(size_t blockNo, size_t blockSize, char *buf) {
+	int ret = 0;
+	long save;
+
+	/* save fpos */
+	save = ftell(fs);
+	if (save == -1) {
+		perror("ftell() in read_block");
+		return -1;
+	}
+
+	/* goto requested fpos */
+	/* CHECK */
+	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
+		perror("fseek() #1 in read_block");
+		ret = -2;
+		goto cleanup;
+	}
+
+	/* write chunk */
+	if (fwrite(buf, 1, blockSize, fs) < blockSize) {
+		ret = -3;
+		if (ferror(fs))
+			perror("fwrite() in write_block()");
+	}
+
+cleanup:
+	/* reset fpos */
+	if (fseek(fs, save, SEEK_SET) == -1)
+		return -4;
+	return ret;
+}

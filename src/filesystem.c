@@ -29,7 +29,7 @@ bool create_fs(const struct fs_settings *fss) {
 		return false;
 	}
 
-	/* TODO: make basic directory table */
+	/* TODO: make basic directory table & garbage 64 MB file */
 
 	return true;
 }
