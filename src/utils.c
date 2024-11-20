@@ -58,7 +58,7 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	}
 
 	/* goto requested fpos */
-	/* CHECK */
+	/* CHECK: are these calculations fine? */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
 		perror("fseek() #1 in read_block");
 		ret = -2;
@@ -97,7 +97,7 @@ int write_block(size_t blockNo, size_t blockSize, char *buf) {
 	}
 
 	/* goto requested fpos */
-	/* CHECK */
+	/* CHECK: are these calculations fine? */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
 		perror("fseek() #1 in write_block");
 		ret = -2;

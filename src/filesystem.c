@@ -8,77 +8,73 @@
 #include "../include/filesystem.h"
 #include "../include/utils.h"
 
-const struct fs_settings defaultCfg = {.fsName	   = FS_NAME,
-									   .fsSize	   = FS_SIZE,
-									   .numEntries = NUM_ENTRIES,
-									   .blockSize  = BLOCK_SIZE,
-									   .fBlocks	   = FILE_BLOCKS,
-									   .fNameLen   = FILE_NAME_LEN};
-const struct table_info emptyTable	= {.table = NULL, .idx = 0, .size = 0};
-const struct dir_entry rootEntry	= {.valid		  = true,
-									   .isDir		  = true,
-									   .nameLen		  = 6,
-									   .parentNameLen = 0,
-									   .name		  = "_ROOT\0",
-									   .parentDir	  = "\0",
-									   .size		  = 0,
-									   .firstBlockNo  = -1};
-const struct dir_entry garbageEntry = {.valid		  = false,
-									   .isDir		  = false,
-									   .nameLen		  = 8,
-									   .parentNameLen = 6,
-									   .name		  = "$arbage\0",
-									   .parentDir	  = "_ROOT\0",
-									   .size		  = 0,
-									   .firstBlockNo  = -1};
-
-int get_dts_len(const struct dir_entry *dte) {
-	return (sizeof(bool) * 2) + (sizeof(ushort) * 2) + dte->nameLen +
+int get_dte_len(const dirT_entry *dte) {
+	return (sizeof(bool) * 2) + (sizeof(unsigned short) * 2) + dte->nameLen +
 		   dte->parentNameLen + (sizeof(size_t) * 2);
 }
 
-#define ROOT_ENTRY_LEN	  get_dts_len(&rootEntry)
-#define GARBAGE_ENTRY_LEN get_dts_len(&garbageEntry)
+FILE *fs	  = NULL;
+fs_table dirT = {.isFat = false, .size = 0, .u.dirTEntries = NULL};
+fs_table faT  = {.isFat = true, .size = 0, .u.fatEntries = NULL};
 
-FILE *fs			   = NULL;
-struct table_info dirT = emptyTable;
-struct table_info fat  = emptyTable;
+/**
+ * @brief serialises all the entries of a table to a buffer. Grows the buffer if
+ * necessary.
+ *
+ * @return size of the buffer after filling it up
+ */
+size_t dump_entries_to_buf(fs_table *t) {
+	size_t idx = 0;
+	size_t cap = 0;
+
+	for (size_t i = 0; i < dirT.size; i++)
+		cap += get_dte_len(&dirT.u.dirTEntries[i]);
+
+	char *buf = malloc(cap);
+	if (buf == NULL) {
+		perror("malloc() in dump_entries_to_buf()");
+		return 0;
+	}
+
+	for (size_t i = 0; i < t->size; i++)
+		write_entry_to_buf(&t->u.dirTEntries[i], buf, &idx);
+
+	return idx;
+}
 
 /**
  * @brief creates a directory table in memory, populates it with the root entry
  * and garbage entries
  */
-struct table_info create_dir_table(int entryCount) {
-	struct table_info dirT = emptyTable;
-	dirT.size			   = entryCount * 64;
+void init_new_dir_t(int entryCount, fs_table *dirT) {
+	dirT->size			= entryCount;
+	dirT->u.dirTEntries = malloc(sizeof(dirT_entry) * dirT->size);
 
-	dirT.table = malloc(dirT.size); /* each entry ~= 64 bytes */
-	if (dirT.table == NULL) {
-		perror("malloc() in create_fs()");
-		return dirT;
+	if (dirT->u.dirTEntries == NULL) {
+		perror("malloc() in init_new_dir_t()");
+		return;
 	}
 
-	if (double_if_Of(dirT.table, dirT.idx, ROOT_ENTRY_LEN, &dirT.size) == NULL)
-		return emptyTable;
-
-	const int garbageEntryLen = GARBAGE_ENTRY_LEN;
-
-	write_entry_to_buf(&rootEntry, dirT.table, &dirT.idx);
-	for (int i = 1; i < entryCount; i++) {
-		if (double_if_Of(dirT.table, dirT.idx, garbageEntryLen, &dirT.size))
-			return emptyTable;
-		write_entry_to_buf(&garbageEntry, dirT.table, &dirT.idx);
-	}
-
-	return dirT;
+	dirT->u.dirTEntries[0] = DIR_TABLE_ROOT_ENTRY;
+	for (size_t i = 1; i < dirT->size; i++)
+		dirT->u.dirTEntries[i] = DIR_TABLE_GARBAGE_ENTRY;
 }
 
-struct table_info create_fat() {
-	struct table_info fat = emptyTable;
+void init_new_fat(size_t numBlocks, size_t numMetadataBlocks, fs_table *faT) {
+	faT->size		  = numBlocks - numMetadataBlocks;
+	faT->u.fatEntries = malloc(sizeof(fat_entry) * faT->size);
 
-	/* TODO: create FAT */
+	if (faT->u.fatEntries == NULL) {
+		perror("malloc() in init_new_fat()");
+		return;
+	}
 
-	return fat;
+	/* CHECK: Do I need any other information? */
+	for (size_t i = 0; i < faT->size; i++)
+		faT->u.fatEntries[i] = (fat_entry){
+			.used = 0, .nextBlockNum = i + 1, .physicalBlockNum = i};
+
+	faT->u.fatEntries[faT->size].nextBlockNum = SIZE_MAX;
 }
 
 /**
@@ -86,7 +82,10 @@ struct table_info create_fat() {
  * parameters, generates a preliminary, empty table, writes it to the filesystem
  * file, and populates the directory and FAT tables
  */
-bool create_fs(const struct fs_settings *fss) {
+bool create_fs(const fs_settings *fss) {
+	char *buf			   = NULL;
+	const size_t numBlocks = (fss->fsSize * 1024 * 1024) / fss->blockSize;
+
 	/* open file for writing */
 	if ((fs = fopen(fss->fsName, "w+")) == NULL) {
 		perror("fopen() in create_fs()");
@@ -94,83 +93,110 @@ bool create_fs(const struct fs_settings *fss) {
 	}
 
 	/* create relevant tables in memory */
-	dirT = create_dir_table(fss->numEntries);
-	if (dirT.table == NULL) {
-		if (fclose(fs) == EOF)
-			perror("fclose() #1 in create_fs()");
-		return false;
+	init_new_dir_t(fss->numEntries, &dirT);
+	if (dirT.u.dirTEntries == NULL)
+		goto fclose;
+
+	/* CHECK: how can we figure this out? */
+	int numMetadataBlocks = 4;
+
+	init_new_fat(numBlocks, numMetadataBlocks, &faT);
+	if (faT.u.fatEntries == NULL) {
+		free(dirT.u.dirTEntries);
+		goto fclose;
 	}
 
-	fat = create_fat();
-	if (fat.table == NULL) {
-		if (fclose(fs) == EOF)
-			perror("fclose() #2 in create_fs()");
-		return false;
+	/* write garbage blocks to disk */
+	buf = calloc(fss->blockSize, sizeof(char));
+	if (buf == NULL) {
+		perror("calloc() in create_fs()");
+		free(dirT.u.dirTEntries);
+		free(faT.u.fatEntries);
+		goto fclose;
 	}
 
-	/* TODO: while tableSize > 0, write new blocks to disk... */
+	for (size_t i = 0; i < numBlocks; i++) {
+		if (write_block(i, fss->blockSize, buf) != 0) {
+			fprintf(stderr, "create_fs(): failed at block #%ld\n", i);
+			free(dirT.u.dirTEntries);
+			free(faT.u.fatEntries);
+			free(buf);
+			goto fclose;
+		}
+	}
 
 	return true;
+
+fclose:
+	if (fclose(fs) == EOF)
+		perror("fclose() in create_fs()");
+	return false;
 }
 
 int main(/* int argc, char** argv*/) {
 	int ret = 0;
 
 	/* user settings */
-	struct fs_settings userFsSettings = load_config();
+	fs_settings userFsSettings = load_config();
 
 	/* init filesystem file */
 	if (!init_fs(&userFsSettings))
-		goto cleanup;
+		return 1;
 
 	/* TODO: menu loop w/ ncurses */
 
-cleanup:
+	/* cleanup: */
 	if (fclose(fs) == EOF)
 		perror("fclose() in main()");
 	return ret;
 }
 
-struct fs_settings load_config() {
+fs_settings load_config() {
+	fs_settings cfg = DEFAULT_CFG;
+
 	/* TODO: read config file to load parameters and deserialise into struct */
-	return defaultCfg;
+	return cfg;
 }
 
 /**
  * @brief writes a directory table entry to a buffer. It is the caller's
  * responsibility to ensure that the buffer is large enough to hold the entry
+ *
+ * @param i idx of the buffer
  */
-void write_entry_to_buf(const struct dir_entry *e, char *b, size_t *s) {
-	memcpy(b + *s, &e->valid, sizeof(bool));
-	*s += sizeof(bool);
-	memcpy(b + *s, &e->isDir, sizeof(bool));
-	*s += sizeof(bool);
-	memcpy(b + *s, &e->nameLen, sizeof(ushort));
-	*s += sizeof(ushort);
-	memcpy(b + *s, &e->parentNameLen, sizeof(ushort));
-	*s += sizeof(ushort);
-	memcpy(b + *s, e->name, e->nameLen);
-	*s += e->nameLen;
-	memcpy(b + *s, e->parentDir, e->parentNameLen);
-	*s += e->parentNameLen;
-	memcpy(b + *s, &e->size, sizeof(size_t));
-	*s += sizeof(size_t);
-	memcpy(b + *s, &e->firstBlockNo, sizeof(size_t));
-	*s += sizeof(size_t);
+void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
+	memcpy(b + *i, &e->valid, sizeof(bool));
+	*i += sizeof(bool);
+	memcpy(b + *i, &e->isDir, sizeof(bool));
+	*i += sizeof(bool);
+	memcpy(b + *i, &e->nameLen, sizeof(unsigned short));
+	*i += sizeof(unsigned short);
+	memcpy(b + *i, &e->parentNameLen, sizeof(unsigned short));
+	*i += sizeof(unsigned short);
+	memcpy(b + *i, e->name, e->nameLen);
+	*i += e->nameLen;
+	memcpy(b + *i, e->parentDir, e->parentNameLen);
+	*i += e->parentNameLen;
+	memcpy(b + *i, &e->size, sizeof(size_t));
+	*i += sizeof(size_t);
+	memcpy(b + *i, &e->firstBlockNum, sizeof(size_t));
+	*i += sizeof(size_t);
 }
 
 /**
  * @brief creates or opens an existing filesystem file
  */
-bool init_fs(const struct fs_settings *fss) {
+bool init_fs(const fs_settings *fss) {
 	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
 		if (errno == ENOENT) {
-			if (!create_fs(fss))
-				return false;
+			return create_fs(fss);
 		} else {
 			perror("fopen() in init_fs()");
 			return false;
 		}
+	} else {
+		/* TODO: load faT and dirT from disk */
 	}
+
 	return true;
 }
