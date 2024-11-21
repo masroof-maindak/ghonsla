@@ -18,15 +18,103 @@ fs_table dirT = {.isFat = false, .size = 0, .u.dirTEntries = NULL};
 fs_table faT  = {.isFat = true, .size = 0, .u.fatEntries = NULL};
 
 /**
+ * @brief return the index of an entry in the global directory table
+ *
+ * @return SIZE_MAX if the name being searched for was not found
+ */
+size_t get_index_of_dir_entry(const char *name, const char *cwd) {
+	unsigned short nameLen		 = strlen(name);
+	unsigned short parentNameLen = strlen(cwd);
+
+	/* CHECK: wtf */
+	for (size_t i = 0; i < dirT.size; i++)
+		if (dirT.u.dirTEntries[i].nameLen == nameLen &&
+			dirT.u.dirTEntries[i].parentNameLen == parentNameLen &&
+			strcmp(cwd, dirT.u.dirTEntries[i].parentDir) == 0 &&
+			strcmp(name, dirT.u.dirTEntries[i].name) == 0)
+			return i;
+
+	return SIZE_MAX;
+}
+
+bool create_file(char *name, char *cwd) {
+	size_t i = 0;
+
+	for (; i < dirT.size; i++)
+		if (!dirT.u.dirTEntries->valid)
+			break;
+
+	/* CHECK: is `i` out of bounds */
+	if (i == dirT.size) {
+		return false;
+	}
+
+	dirT.u.dirTEntries[i] = (dirT_entry){.valid			= true,
+										 .isDir			= false,
+										 .nameLen		= strlen(name),
+										 .parentNameLen = strlen(cwd),
+										 .name			= name,
+										 .parentDir		= cwd,
+										 .size			= 0,
+										 .firstBlockNum = SIZE_MAX};
+
+	return true;
+}
+
+bool remove_file(const char *name, const char *cwd) {
+	size_t i = get_index_of_dir_entry(name, cwd);
+	if (i == SIZE_MAX)
+		return false;
+
+	/* TODO: update FAT entries (simply set size to 0) */
+
+	dirT.u.dirTEntries[i].valid			= false;
+	dirT.u.dirTEntries[i].firstBlockNum = SIZE_MAX;
+
+	return true;
+}
+
+bool rename_file(char *name, const char *cwd) {
+	size_t i = get_index_of_dir_entry(name, cwd);
+	if (i == SIZE_MAX)
+		return false;
+
+	free(dirT.u.dirTEntries[i].name);
+	dirT.u.dirTEntries[i].name = name;
+
+	return true;
+}
+
+bool rename_directory(char *name, const char *cwd) {
+	size_t i = get_index_of_dir_entry(name, cwd);
+	if (i == SIZE_MAX)
+		return false;
+
+	/* TODO: go through all children and change their parent's name */
+	for (size_t i = 0; i < dirT.size; i++) {
+		if (!dirT.u.dirTEntries[i].isDir && strncmp(name, ) == 0)
+	}
+
+	free(dirT.u.dirTEntries[i].name);
+	dirT.u.dirTEntries[i].name = name;
+
+	return true;
+}
+
+/**
  * @brief serialises all the entries of a table to a buffer. Grows the buffer if
  * necessary.
  *
+ * @details this should be called after the user has written other information
+ * to the disk first, namely, the fs_settings we want to let them be able to
+ * parametrize
+ *
  * @return size of the buffer after filling it up
  */
-size_t dump_entries_to_buf(fs_table *t) {
-	size_t idx = 0;
+size_t dump_entries_to_buf(fs_table *t, char *buf, size_t idx) {
 	size_t cap = 0;
 
+	// --- TOOD: abstract out
 	for (size_t i = 0; i < dirT.size; i++)
 		cap += get_dte_len(&dirT.u.dirTEntries[i]);
 
@@ -35,6 +123,7 @@ size_t dump_entries_to_buf(fs_table *t) {
 		perror("malloc() in dump_entries_to_buf()");
 		return 0;
 	}
+	// ---
 
 	for (size_t i = 0; i < t->size; i++)
 		write_entry_to_buf(&t->u.dirTEntries[i], buf, &idx);
@@ -69,10 +158,13 @@ void init_new_fat(size_t numBlocks, size_t numMetadataBlocks, fs_table *faT) {
 		return;
 	}
 
-	/* CHECK: Do I need any other information? */
+	/* initialise FAT as a free list */
+	/* CHECK: off-by-one? */
 	for (size_t i = 0; i < faT->size; i++)
-		faT->u.fatEntries[i] = (fat_entry){
-			.used = 0, .nextBlockNum = i + 1, .physicalBlockNum = i};
+		faT->u.fatEntries[i] =
+			(fat_entry){.used			  = 0,
+						.nextBlockNum	  = numMetadataBlocks + i + 1,
+						.physicalBlockNum = numMetadataBlocks + i};
 
 	faT->u.fatEntries[faT->size].nextBlockNum = SIZE_MAX;
 }
@@ -82,13 +174,13 @@ void init_new_fat(size_t numBlocks, size_t numMetadataBlocks, fs_table *faT) {
  * parameters, generates a preliminary, empty table, writes it to the filesystem
  * file, and populates the directory and FAT tables
  */
-bool create_fs(const fs_settings *fss) {
+bool create_empty_fs(const fs_settings *fss) {
 	char *buf			   = NULL;
 	const size_t numBlocks = (fss->fsSize * 1024 * 1024) / fss->blockSize;
 
 	/* open file for writing */
 	if ((fs = fopen(fss->fsName, "w+")) == NULL) {
-		perror("fopen() in create_fs()");
+		perror("fopen() in create_empty_fs()");
 		return false;
 	}
 
@@ -109,7 +201,7 @@ bool create_fs(const fs_settings *fss) {
 	/* write garbage blocks to disk */
 	buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
-		perror("calloc() in create_fs()");
+		perror("calloc() in create_empty_fs()");
 		free(dirT.u.dirTEntries);
 		free(faT.u.fatEntries);
 		goto fclose;
@@ -117,7 +209,7 @@ bool create_fs(const fs_settings *fss) {
 
 	for (size_t i = 0; i < numBlocks; i++) {
 		if (write_block(i, fss->blockSize, buf) != 0) {
-			fprintf(stderr, "create_fs(): failed at block #%ld\n", i);
+			fprintf(stderr, "create_empty_fs(): failed at block #%ld\n", i);
 			free(dirT.u.dirTEntries);
 			free(faT.u.fatEntries);
 			free(buf);
@@ -129,7 +221,7 @@ bool create_fs(const fs_settings *fss) {
 
 fclose:
 	if (fclose(fs) == EOF)
-		perror("fclose() in create_fs()");
+		perror("fclose() in create_empty_fs()");
 	return false;
 }
 
@@ -159,10 +251,9 @@ fs_settings load_config() {
 }
 
 /**
- * @brief writes a directory table entry to a buffer. It is the caller's
- * responsibility to ensure that the buffer is large enough to hold the entry
- *
- * @param i idx of the buffer
+ * @brief writes a directory table entry to a buffer's i'th index. It is the
+ * caller's responsibility to ensure that the buffer is large enough to hold the
+ * entry
  */
 void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
 	memcpy(b + *i, &e->valid, sizeof(bool));
@@ -189,7 +280,7 @@ void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
 bool init_fs(const fs_settings *fss) {
 	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
 		if (errno == ENOENT) {
-			return create_fs(fss);
+			return create_empty_fs(fss);
 		} else {
 			perror("fopen() in init_fs()");
 			return false;

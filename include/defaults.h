@@ -11,20 +11,20 @@
 #define DIR_TABLE_ROOT_ENTRY                                                   \
 	(dirT_entry){.valid			= true,                                        \
 				 .isDir			= true,                                        \
-				 .nameLen		= 6,                                           \
+				 .nameLen		= 1,                                           \
 				 .parentNameLen = 0,                                           \
-				 .name			= "_ROOT\0",                                   \
-				 .parentDir		= "\0",                                        \
+				 .name			= "/",                                         \
+				 .parentDir		= "",                                          \
 				 .size			= 0,                                           \
 				 .firstBlockNum = SIZE_MAX};
 
 #define DIR_TABLE_GARBAGE_ENTRY                                                \
 	(dirT_entry){.valid			= false,                                       \
 				 .isDir			= false,                                       \
-				 .nameLen		= 8,                                           \
-				 .parentNameLen = 6,                                           \
-				 .name			= "$arbage\0",                                 \
-				 .parentDir		= "_ROOT\0",                                   \
+				 .nameLen		= 0,                                           \
+				 .parentNameLen = 1,                                           \
+				 .name			= "",                                          \
+				 .parentDir		= "/",                                         \
 				 .size			= 0,                                           \
 				 .firstBlockNum = SIZE_MAX};
 
