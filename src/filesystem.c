@@ -78,6 +78,22 @@ bool append_to_file(char *buf, fs_settings *fss) {
 }
 
 /**
+ * @brief print the contents of a directory to stdout
+ */
+bool print_directory_contents(const char *name, size_t cwd) {
+	size_t i = get_index_of_dir_entry(name, cwd);
+	if (i == SIZE_MAX)
+		return false;
+
+	for (size_t j = 0; j < dirT.size; j++)
+		if (dirT.u.dirTEntries[j].valid && dirT.u.dirTEntries[j].parentIdx == i)
+			printf("%s%s%s\n", dirT.u.dirTEntries[j].isDir ? BOLD_BLUE : CYAN,
+				   dirT.u.dirTEntries[j].name, RESET);
+
+	return true;
+}
+
+/**
  * @brief remove the entire contents of a file. Note that the final block of a
  * file's contents must have it's 'next' set to SIZE_MAX.
  *
@@ -280,6 +296,7 @@ int main(/* int argc, char** argv*/) {
 	create_dir_entry(f2name, 1, false);
 	create_dir_entry(f3name, 1, false);
 	rename_dir_entry(f2name, rename, 1);
+	print_directory_contents(d1name, 0);
 	free(d1name);
 	free(f3name);
 	free(rename);

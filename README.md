@@ -15,7 +15,7 @@
 - [/] Directories
 	- [x] Create
     - [x] Rename
-	- [ ] List Contents
+	- [x] List Contents
 	- [ ] Delete (recursion?)
 - [ ] Serialise and deserialise global directory table/FAT
 - [/] Partition
