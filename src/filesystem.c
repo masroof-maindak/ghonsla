@@ -34,11 +34,15 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd) {
 	return SIZE_MAX;
 }
 
+/**
+ * @brief creates a new file or directory under the parent directory at `cwd`
+ * index. The `name` must point to a heap-allocated string.
+ */
 bool create_dir_entry(char *name, size_t cwd, bool isDir) {
-	size_t i = 0;
+	size_t i = 1;
 
 	for (; i < dirT.size; i++)
-		if (!dirT.u.dirTEntries->valid)
+		if (!dirT.u.dirTEntries[i].valid)
 			break;
 
 	if (i == dirT.size)
@@ -55,7 +59,23 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir) {
 	return true;
 }
 
-bool write_file(char *buf) { return true; }
+bool append_to_file(char *buf, fs_settings *fss) {
+
+	/*
+	 * TODO: Append to file
+	 * Determine final block of this file
+	 *
+	 * Determine number of blocks this buffer will take accounting for the space
+	 * remaining in the final block
+	 *
+	 * 'Reclaim' the content of the final block if need be
+	 *
+	 * Write blocks in a loop, knowing which blocks to write from the 'next'
+	 * field in a struct of fat_entry
+	 */
+
+	return true;
+}
 
 /**
  * @brief remove the entire contents of a file. Note that the final block of a
@@ -68,7 +88,8 @@ size_t truncate_file(const char *name, size_t cwd) {
 	if (i == SIZE_MAX)
 		return SIZE_MAX;
 
-	size_t blockNum = dirT.u.dirTEntries[i].firstBlockNum;
+	size_t blockNum = dirT.u.dirTEntries[i].firstBlockNum, save = blockNum;
+
 	while (blockNum != SIZE_MAX) {
 		faT.u.fatEntries[blockNum].used = 0;
 		blockNum = faT.u.fatEntries[blockNum].nextBlockNum;
@@ -76,30 +97,40 @@ size_t truncate_file(const char *name, size_t cwd) {
 
 	/*
 	 * TODO: point the last block in a file's content's chain to the 'first
-	 * free' and update 'first free accordingly'
+	 * free' and set first free to point to the original start of this file
 	 */
 
 	return i;
 }
 
+/**
+ * @brief renames a file in the global directory table. The 'name' is freed
+ */
 bool remove_file(const char *name, size_t cwd) {
 	size_t i = truncate_file(name, cwd);
 	if (i == SIZE_MAX)
 		return false;
 
+	free(dirT.u.dirTEntries[i].name);
+	dirT.u.dirTEntries[i].name			= "";
 	dirT.u.dirTEntries[i].valid			= false;
 	dirT.u.dirTEntries[i].firstBlockNum = SIZE_MAX;
 
 	return true;
 }
 
-bool rename_dir_entry(char *name, size_t cwd) {
+/**
+ * @brief renames an entry in the global directory table. The old 'name' is
+ * freed
+ */
+bool rename_dir_entry(char *name, char *newName, size_t cwd) {
 	size_t i = get_index_of_dir_entry(name, cwd);
 	if (i == SIZE_MAX)
 		return false;
 
 	free(dirT.u.dirTEntries[i].name);
-	dirT.u.dirTEntries[i].name = name;
+	dirT.u.dirTEntries[i].name	  = newName;
+	dirT.u.dirTEntries[i].nameLen = strlen(newName);
 
 	return true;
 }
@@ -195,6 +226,8 @@ bool init_new_fs(const fs_settings *fss) {
 		goto fclose;
 	}
 
+	/* TODO: first free = numMetadataBlocks; */
+
 	/* write garbage blocks to disk */
 	char *buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
@@ -235,9 +268,28 @@ int main(/* int argc, char** argv*/) {
 	if (!init_fs(&userFsSettings))
 		return 1;
 
+	/* TESTING */
+	char *d1name = copy_string("firstDir");
+	char *f1name = copy_string("f1");
+	char *f2name = copy_string("f2");
+	char *f3name = copy_string("f3");
+	char *rename = copy_string("f2_renamed");
+	create_dir_entry(d1name, 0, true);
+	create_dir_entry(f1name, 0, false);
+	remove_file(f1name, 0);
+	create_dir_entry(f2name, 1, false);
+	create_dir_entry(f3name, 1, false);
+	rename_dir_entry(f2name, rename, 1);
+	free(d1name);
+	free(f3name);
+	free(rename);
+	/* --------*/
+
 	/* cleanup: */
 	if (fclose(fs) == EOF)
 		perror("fclose() in main()");
+	free(dirT.u.dirTEntries);
+	free(faT.u.fatEntries);
 	return ret;
 }
 

@@ -2,7 +2,7 @@
 
 ### TODO
 
-- [x] read/write_block (must test)
+- [x] read/write_block
 - [x] Global directory table/FAT primitives
 - [ ] Basic menu
 - [/] Files
@@ -12,7 +12,7 @@
 	- [ ] Read
 	- [ ] Write
 	- [/] Truncate
-- [ ] Directories
+- [/] Directories
 	- [x] Create
     - [x] Rename
 	- [ ] List Contents

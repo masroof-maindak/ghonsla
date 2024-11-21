@@ -16,4 +16,4 @@ debug:
 	gcc $(SRCS) $(CFLAGS) $(DEBUG_FLAGS) $(LDFLAGS) -o $(TARGET)
 
 clean:
-	rm -f *.o ghonsla
+	rm -f *.o ghonsla disk.fs
