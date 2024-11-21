@@ -3,19 +3,25 @@
 ### TODO
 
 - [x] read/write_block (must test)
-- [/] Global directory table/FAT primitives
+- [x] Global directory table/FAT primitives
 - [ ] Basic menu
-- [ ] Files
-	- [ ] Create
-	- [ ] Delete
+- [/] Files
+	- [x] Create
+	- [x] Delete
+	- [x] Rename
 	- [ ] Read
 	- [ ] Write
-	- [ ] Truncate
+	- [/] Truncate
 - [ ] Directories
-	- [ ] Create
-	- [ ] List
-	- [ ] Remove
-- [ ] Format partition
-- [ ] Ncurses/Termbox2 TUI
+	- [x] Create
+    - [x] Rename
+	- [ ] List Contents
+	- [ ] Delete (recursion?)
+- [ ] Serialise and deserialise global directory table/FAT
+- [/] Partition
+	- [x] Create
+	- [ ] Format
 - [ ] Encryption on-disk
+- [ ] Ncurses/Termbox2 TUI
+- [ ] Optimise disk writes
 - [ ] Multi-partition support?

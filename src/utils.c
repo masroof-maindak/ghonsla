@@ -53,14 +53,13 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* save fpos */
 	save = ftell(fs);
 	if (save == -1) {
-		perror("ftell() in read_block");
+		perror("ftell() in read_block()");
 		return -1;
 	}
 
 	/* goto requested fpos */
-	/* CHECK: are these calculations fine? */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() #1 in read_block");
+		perror("fseek() #1 in read_block()");
 		ret = -2;
 		goto cleanup;
 	}
@@ -80,8 +79,11 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 
 cleanup:
 	/* goto original fpos */
-	if (fseek(fs, save, SEEK_SET) == -1)
+	if (fseek(fs, save, SEEK_SET) == -1) {
+		perror("fseek() #2 in read_block()");
 		return -5;
+	}
+
 	return ret;
 }
 
@@ -92,14 +94,13 @@ int write_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* save fpos */
 	save = ftell(fs);
 	if (save == -1) {
-		perror("ftell() in write_block");
+		perror("ftell() in write_block()");
 		return -1;
 	}
 
 	/* goto requested fpos */
-	/* CHECK: are these calculations fine? */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() #1 in write_block");
+		perror("fseek() #1 in write_block()");
 		ret = -2;
 		goto cleanup;
 	}
@@ -113,7 +114,10 @@ int write_block(size_t blockNo, size_t blockSize, char *buf) {
 
 cleanup:
 	/* reset fpos */
-	if (fseek(fs, save, SEEK_SET) == -1)
+	if (fseek(fs, save, SEEK_SET) == -1) {
+		perror("fseek() #2 in write_block()");
 		return -4;
+	}
+
 	return ret;
 }

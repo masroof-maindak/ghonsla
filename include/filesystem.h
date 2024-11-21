@@ -17,21 +17,18 @@ typedef struct {
 	bool valid;
 	bool isDir;
 	unsigned short nameLen;
-	unsigned short parentNameLen;
 	char *name;
-	char *parentDir;
 	size_t size;
+	size_t parentIdx;
 	size_t firstBlockNum;
 } dirT_entry;
 
 typedef struct {
 	size_t used;
 	size_t nextBlockNum;
-	size_t physicalBlockNum;
 } fat_entry;
 
 typedef struct {
-	bool isFat;
 	size_t size;
 	union {
 		dirT_entry *dirTEntries;

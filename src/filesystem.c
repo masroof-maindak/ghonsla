@@ -9,64 +9,83 @@
 #include "../include/utils.h"
 
 int get_dte_len(const dirT_entry *dte) {
-	return (sizeof(bool) * 2) + (sizeof(unsigned short) * 2) + dte->nameLen +
-		   dte->parentNameLen + (sizeof(size_t) * 2);
+	return (sizeof(dirT_entry) - sizeof(char *) + dte->nameLen);
 }
 
 FILE *fs	  = NULL;
-fs_table dirT = {.isFat = false, .size = 0, .u.dirTEntries = NULL};
-fs_table faT  = {.isFat = true, .size = 0, .u.fatEntries = NULL};
+fs_table dirT = {.size = 0, .u.dirTEntries = NULL};
+fs_table faT  = {.size = 0, .u.fatEntries = NULL};
 
 /**
  * @brief return the index of an entry in the global directory table
  *
  * @return SIZE_MAX if the name being searched for was not found
  */
-size_t get_index_of_dir_entry(const char *name, const char *cwd) {
-	unsigned short nameLen		 = strlen(name);
-	unsigned short parentNameLen = strlen(cwd);
+size_t get_index_of_dir_entry(const char *name, size_t cwd) {
+	unsigned short nameLen = strlen(name);
 
-	/* CHECK: wtf */
 	for (size_t i = 0; i < dirT.size; i++)
-		if (dirT.u.dirTEntries[i].nameLen == nameLen &&
-			dirT.u.dirTEntries[i].parentNameLen == parentNameLen &&
-			strcmp(cwd, dirT.u.dirTEntries[i].parentDir) == 0 &&
-			strcmp(name, dirT.u.dirTEntries[i].name) == 0)
+		if (dirT.u.dirTEntries[i].valid &&
+			dirT.u.dirTEntries[i].nameLen == nameLen &&
+			dirT.u.dirTEntries[i].parentIdx == cwd &&
+			strncmp(name, dirT.u.dirTEntries[i].name, nameLen) == 0)
 			return i;
 
 	return SIZE_MAX;
 }
 
-bool create_file(char *name, char *cwd) {
+bool create_dir_entry(char *name, size_t cwd, bool isDir) {
 	size_t i = 0;
 
 	for (; i < dirT.size; i++)
 		if (!dirT.u.dirTEntries->valid)
 			break;
 
-	/* CHECK: is `i` out of bounds */
-	if (i == dirT.size) {
+	if (i == dirT.size)
 		return false;
-	}
 
 	dirT.u.dirTEntries[i] = (dirT_entry){.valid			= true,
-										 .isDir			= false,
+										 .isDir			= isDir,
 										 .nameLen		= strlen(name),
-										 .parentNameLen = strlen(cwd),
 										 .name			= name,
-										 .parentDir		= cwd,
 										 .size			= 0,
+										 .parentIdx		= cwd,
 										 .firstBlockNum = SIZE_MAX};
 
 	return true;
 }
 
-bool remove_file(const char *name, const char *cwd) {
+bool write_file(char *buf) { return true; }
+
+/**
+ * @brief remove the entire contents of a file. Note that the final block of a
+ * file's contents must have it's 'next' set to SIZE_MAX.
+ *
+ * @return the index of the file in the global directory table
+ */
+size_t truncate_file(const char *name, size_t cwd) {
 	size_t i = get_index_of_dir_entry(name, cwd);
 	if (i == SIZE_MAX)
-		return false;
+		return SIZE_MAX;
 
-	/* TODO: update FAT entries (simply set size to 0) */
+	size_t blockNum = dirT.u.dirTEntries[i].firstBlockNum;
+	while (blockNum != SIZE_MAX) {
+		faT.u.fatEntries[blockNum].used = 0;
+		blockNum = faT.u.fatEntries[blockNum].nextBlockNum;
+	}
+
+	/*
+	 * TODO: point the last block in a file's content's chain to the 'first
+	 * free' and update 'first free accordingly'
+	 */
+
+	return i;
+}
+
+bool remove_file(const char *name, size_t cwd) {
+	size_t i = truncate_file(name, cwd);
+	if (i == SIZE_MAX)
+		return false;
 
 	dirT.u.dirTEntries[i].valid			= false;
 	dirT.u.dirTEntries[i].firstBlockNum = SIZE_MAX;
@@ -74,26 +93,10 @@ bool remove_file(const char *name, const char *cwd) {
 	return true;
 }
 
-bool rename_file(char *name, const char *cwd) {
+bool rename_dir_entry(char *name, size_t cwd) {
 	size_t i = get_index_of_dir_entry(name, cwd);
 	if (i == SIZE_MAX)
 		return false;
-
-	free(dirT.u.dirTEntries[i].name);
-	dirT.u.dirTEntries[i].name = name;
-
-	return true;
-}
-
-bool rename_directory(char *name, const char *cwd) {
-	size_t i = get_index_of_dir_entry(name, cwd);
-	if (i == SIZE_MAX)
-		return false;
-
-	/* TODO: go through all children and change their parent's name */
-	for (size_t i = 0; i < dirT.size; i++) {
-		if (!dirT.u.dirTEntries[i].isDir && strncmp(name, ) == 0)
-	}
 
 	free(dirT.u.dirTEntries[i].name);
 	dirT.u.dirTEntries[i].name = name;
@@ -102,27 +105,25 @@ bool rename_directory(char *name, const char *cwd) {
 }
 
 /**
- * @brief serialises all the entries of a table to a buffer. Grows the buffer if
- * necessary.
+ * @brief serialises all the entries of a table to a buffer
  *
  * @details this should be called after the user has written other information
- * to the disk first, namely, the fs_settings we want to let them be able to
- * parametrize
+ * to the disk first
  *
- * @return size of the buffer after filling it up
+ * @return idx of the buffer after filling it up
  */
 size_t dump_entries_to_buf(fs_table *t, char *buf, size_t idx) {
-	size_t cap = 0;
-
 	// --- TOOD: abstract out
-	for (size_t i = 0; i < dirT.size; i++)
-		cap += get_dte_len(&dirT.u.dirTEntries[i]);
-
-	char *buf = malloc(cap);
-	if (buf == NULL) {
-		perror("malloc() in dump_entries_to_buf()");
-		return 0;
-	}
+	/* size_t cap = 0; */
+	/**/
+	/* for (size_t i = 0; i < dirT.size; i++) */
+	/* 	cap += get_dte_len(&dirT.u.dirTEntries[i]); */
+	/**/
+	/* char *buf = malloc(cap); */
+	/* if (buf == NULL) { */
+	/* 	perror("malloc() in dump_entries_to_buf()"); */
+	/* 	return 0; */
+	/* } */
 	// ---
 
 	for (size_t i = 0; i < t->size; i++)
@@ -162,21 +163,20 @@ void init_new_fat(size_t numBlocks, size_t numMetadataBlocks, fs_table *faT) {
 	/* CHECK: off-by-one? */
 	for (size_t i = 0; i < faT->size; i++)
 		faT->u.fatEntries[i] =
-			(fat_entry){.used			  = 0,
-						.nextBlockNum	  = numMetadataBlocks + i + 1,
-						.physicalBlockNum = numMetadataBlocks + i};
+			(fat_entry){.used = 0, .nextBlockNum = numMetadataBlocks + i + 1};
 
-	faT->u.fatEntries[faT->size].nextBlockNum = SIZE_MAX;
+	faT->u.fatEntries[faT->size - 1].nextBlockNum = SIZE_MAX;
 }
 
 /**
- * @details creates a basic filesystem file as per the settings defined in the
- * parameters, generates a preliminary, empty table, writes it to the filesystem
- * file, and populates the directory and FAT tables
+ * @details creates a filesystem file as per the settings defined in `fss`, and
+ * initialises the global directory/file allocation tables
  */
-bool create_empty_fs(const fs_settings *fss) {
-	char *buf			   = NULL;
-	const size_t numBlocks = (fss->fsSize * 1024 * 1024) / fss->blockSize;
+bool init_new_fs(const fs_settings *fss) {
+	const size_t numBlocks = (fss->fsSize * 1024 * 1024) / fss->blockSize,
+				 fatBytes  = sizeof(fat_entry) * numBlocks,
+				 dirTBytes = MAX_SIZE_DIR_ENTRY * fss->numEntries,
+				 numMetadataBlocks = (fatBytes + dirTBytes) / fss->blockSize;
 
 	/* open file for writing */
 	if ((fs = fopen(fss->fsName, "w+")) == NULL) {
@@ -189,9 +189,6 @@ bool create_empty_fs(const fs_settings *fss) {
 	if (dirT.u.dirTEntries == NULL)
 		goto fclose;
 
-	/* CHECK: how can we figure this out? */
-	int numMetadataBlocks = 4;
-
 	init_new_fat(numBlocks, numMetadataBlocks, &faT);
 	if (faT.u.fatEntries == NULL) {
 		free(dirT.u.dirTEntries);
@@ -199,7 +196,7 @@ bool create_empty_fs(const fs_settings *fss) {
 	}
 
 	/* write garbage blocks to disk */
-	buf = calloc(fss->blockSize, sizeof(char));
+	char *buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
 		perror("calloc() in create_empty_fs()");
 		free(dirT.u.dirTEntries);
@@ -217,6 +214,7 @@ bool create_empty_fs(const fs_settings *fss) {
 		}
 	}
 
+	free(buf);
 	return true;
 
 fclose:
@@ -228,14 +226,14 @@ fclose:
 int main(/* int argc, char** argv*/) {
 	int ret = 0;
 
+	/* TODO: menu - later: loop w/ ncurses */
+
 	/* user settings */
-	fs_settings userFsSettings = load_config();
+	fs_settings userFsSettings = DEFAULT_CFG;
 
 	/* init filesystem file */
 	if (!init_fs(&userFsSettings))
 		return 1;
-
-	/* TODO: menu loop w/ ncurses */
 
 	/* cleanup: */
 	if (fclose(fs) == EOF)
@@ -243,17 +241,10 @@ int main(/* int argc, char** argv*/) {
 	return ret;
 }
 
-fs_settings load_config() {
-	fs_settings cfg = DEFAULT_CFG;
-
-	/* TODO: read config file to load parameters and deserialise into struct */
-	return cfg;
-}
-
 /**
- * @brief writes a directory table entry to a buffer's i'th index. It is the
+ * @details writes a directory table entry to a buffer's i'th index. It is the
  * caller's responsibility to ensure that the buffer is large enough to hold the
- * entry
+ * entry. The index is incremented accordingly.
  */
 void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
 	memcpy(b + *i, &e->valid, sizeof(bool));
@@ -262,13 +253,11 @@ void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
 	*i += sizeof(bool);
 	memcpy(b + *i, &e->nameLen, sizeof(unsigned short));
 	*i += sizeof(unsigned short);
-	memcpy(b + *i, &e->parentNameLen, sizeof(unsigned short));
-	*i += sizeof(unsigned short);
 	memcpy(b + *i, e->name, e->nameLen);
 	*i += e->nameLen;
-	memcpy(b + *i, e->parentDir, e->parentNameLen);
-	*i += e->parentNameLen;
 	memcpy(b + *i, &e->size, sizeof(size_t));
+	*i += sizeof(size_t);
+	memcpy(b + *i, &e->parentIdx, sizeof(size_t));
 	*i += sizeof(size_t);
 	memcpy(b + *i, &e->firstBlockNum, sizeof(size_t));
 	*i += sizeof(size_t);
@@ -280,7 +269,7 @@ void write_entry_to_buf(const dirT_entry *e, char *b, size_t *i) {
 bool init_fs(const fs_settings *fss) {
 	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
 		if (errno == ENOENT) {
-			return create_empty_fs(fss);
+			return init_new_fs(fss);
 		} else {
 			perror("fopen() in init_fs()");
 			return false;
