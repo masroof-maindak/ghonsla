@@ -2,7 +2,7 @@
 
 ### TODO
 
-- [x] read/write_block
+- [x] read/write\_block
 - [x] Global directory table/FAT primitives
 - [ ] Basic menu
 - [/] Files
@@ -16,7 +16,7 @@
 	- [x] Create
     - [x] Rename
 	- [x] List Contents
-	- [ ] Delete (recursion?)
+	- [x] Delete (TEST)
 - [ ] Serialise and deserialise global directory table/FAT
 - [/] Partition
 	- [x] Create

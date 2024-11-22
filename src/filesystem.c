@@ -8,13 +8,13 @@
 #include "../include/filesystem.h"
 #include "../include/utils.h"
 
-int get_dte_len(const dir_entry *dte) {
-	return (sizeof(dir_entry) - sizeof(char *) + dte->nameLen);
-}
-
 FILE *fs		  = NULL;
 fs_table dirTable = {.size = 0, .dirs = NULL};
 fs_table faT	  = {.size = 0, .blocks = NULL};
+
+int get_dte_len(const dir_entry *dte) {
+	return (sizeof(dir_entry) - sizeof(char *) + dte->nameLen);
+}
 
 /**
  * @brief return the index of an entry in the global directory table
@@ -147,6 +147,24 @@ bool remove_file(const char *name, size_t cwd, size_t i) {
 }
 
 /**
+ * @brief Delete the contents of a directory
+ */
+bool remove_directory(const char *name, size_t cwd, size_t i) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return false;
+	}
+
+	for (size_t j = 0; j < dirTable.size; j++)
+		if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
+			(dirTable.dirs[j].isDir) ? remove_directory(NULL, 0, j)
+									 : remove_file(NULL, 0, j);
+
+	return true;
+}
+
+/**
  * @brief renames an entry in the global directory table. The old 'name' is
  * freed
  */
@@ -229,7 +247,9 @@ void init_new_fat(size_t numBlocks, size_t numMetadataBlocks, fs_table *faT) {
 
 /**
  * @details creates a filesystem file as per the settings defined in `fss`, and
- * initialises the global directory/file allocation tables
+ * initialises the global directory/file allocation tables. If a filesystem
+ * already exists before this function is called, the caller should perform all
+ * relevant cleanup first, namely freeing the global structures.
  */
 bool init_new_fs(const struct filesystem_settings *fss) {
 	const size_t numBlocks		   = (fss->size * 1024 * 1024) / fss->blockSize,
@@ -284,17 +304,24 @@ fclose:
 	return false;
 }
 
+void load_config(struct filesystem_settings *fss) {
+	/*
+	 * TODO: ask user for config and populate `fss`
+	 */
+}
+
 int main(/* int argc, char** argv*/) {
-	int ret = 0;
-
-	/* TODO: menu - later: loop w/ ncurses */
-
-	/* user settings */
+	int ret									  = 0;
 	struct filesystem_settings userFsSettings = DEFAULT_CFG;
 
 	/* init filesystem file */
-	if (!init_fs(&userFsSettings))
-		return 1;
+	if (!open_fs(&userFsSettings))
+		return -1;
+	if (faT.blocks == NULL)
+		load_config(&userFsSettings);
+	init_new_fs(&userFsSettings);
+
+	/* TODO: menu - later: loop w/ ncurses */
 
 	/* TESTING */
 	char *d1name = copy_string("firstDir");
@@ -347,17 +374,17 @@ void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
 /**
  * @brief creates or opens an existing filesystem file
  */
-bool init_fs(const struct filesystem_settings *fss) {
+bool open_fs(const struct filesystem_settings *fss) {
 	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
 		if (errno == ENOENT) {
-			return init_new_fs(fss);
+			return true;
 		} else {
 			perror("fopen() in init_fs()");
 			return false;
 		}
-	} else {
-		/* TODO: load faT and dirT from disk */
 	}
+
+	/* TODO: load fat, dirTable, and user settings from disk */
 
 	return true;
 }

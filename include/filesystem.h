@@ -44,7 +44,7 @@ typedef struct {
 } fs_table;
 
 void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *s);
-bool init_fs(const struct filesystem_settings *fss);
-struct filesystem_settings load_config();
+bool open_fs(const struct filesystem_settings *fss);
+void load_config(struct filesystem_settings *fss);
 
 #endif // FILESYSTEM_H
