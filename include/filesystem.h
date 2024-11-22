@@ -4,14 +4,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef struct {
-	char *fsName;
-	size_t fsSize;
-	size_t numEntries;
+struct filesystem_settings {
+	size_t size;
+	size_t entryCount;
 	size_t blockSize;
 	size_t fBlocks;
-	size_t fNameLen;
-} fs_settings;
+};
 
 typedef struct {
 	bool valid;
@@ -20,8 +18,8 @@ typedef struct {
 	char *name;
 	size_t size;
 	size_t parentIdx;
-	size_t firstBlockNum;
-} dirT_entry;
+	size_t firstBlockIdx;
+} dir_entry;
 
 typedef struct {
 	size_t used;
@@ -31,13 +29,13 @@ typedef struct {
 typedef struct {
 	size_t size;
 	union {
-		dirT_entry *dirTEntries;
-		fat_entry *fatEntries;
-	} u;
+		dir_entry *dirs;
+		fat_entry *blocks;
+	};
 } fs_table;
 
-void write_entry_to_buf(const dirT_entry *e, char *b, size_t *s);
-bool init_fs(const fs_settings *fss);
-fs_settings load_config();
+void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *s);
+bool init_fs(const struct filesystem_settings *fss);
+struct filesystem_settings load_config();
 
 #endif // FILESYSTEM_H

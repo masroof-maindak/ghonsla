@@ -9,31 +9,30 @@
 
 #define MAX_NAME_LEN	   256 /* Maximum length of a file's name */
 #define MAX_SIZE_DIR_ENTRY	   /* Largest possible entry in the dir table */   \
-	(sizeof(dirT_entry) - sizeof(char *) + MAX_NAME_LEN)
+	(sizeof(dir_entry) - sizeof(char *) + MAX_NAME_LEN)
 
 #define DIR_TABLE_ROOT_ENTRY                                                   \
-	(dirT_entry){.valid			= true,                                        \
-				 .isDir			= true,                                        \
-				 .nameLen		= 1,                                           \
-				 .name			= "/",                                         \
-				 .size			= 0,                                           \
-				 .parentIdx		= SIZE_MAX,                                    \
-				 .firstBlockNum = SIZE_MAX};
+	(dir_entry){.valid		   = true,                                         \
+				.isDir		   = true,                                         \
+				.nameLen	   = 1,                                            \
+				.name		   = "/",                                          \
+				.size		   = 0,                                            \
+				.parentIdx	   = SIZE_MAX,                                     \
+				.firstBlockIdx = SIZE_MAX};
 
 #define DIR_TABLE_GARBAGE_ENTRY                                                \
-	(dirT_entry){.valid			= false,                                       \
-				 .isDir			= false,                                       \
-				 .nameLen		= 0,                                           \
-				 .name			= "",                                          \
-				 .size			= 0,                                           \
-				 .parentIdx		= 0,                                           \
-				 .firstBlockNum = SIZE_MAX};
+	(dir_entry){.valid		   = false,                                        \
+				.isDir		   = false,                                        \
+				.nameLen	   = 0,                                            \
+				.name		   = "",                                           \
+				.size		   = 0,                                            \
+				.parentIdx	   = 0,                                            \
+				.firstBlockIdx = SIZE_MAX};
 
 #define DEFAULT_CFG                                                            \
-	(fs_settings){.fsName	  = FS_NAME,                                       \
-				  .fsSize	  = FS_SIZE,                                       \
-				  .numEntries = NUM_ENTRIES,                                   \
-				  .blockSize  = BLOCK_SIZE,                                    \
-				  .fBlocks	  = FILE_BLOCKS};
+	(struct filesystem_settings){.size		 = FS_SIZE,                        \
+								 .entryCount = NUM_ENTRIES,                    \
+								 .blockSize	 = BLOCK_SIZE,                     \
+								 .fBlocks	 = FILE_BLOCKS};
 
 #endif // DEFAULTS_H
