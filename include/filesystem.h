@@ -4,6 +4,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define IDX_NA SIZE_MAX
+/*
+ * NOTE: Most directory table modifications can be made via two possible
+ * 'primary keys' so to speak. One being the index of an entry in the table, and
+ * the other being the name+parent. Thus, relevant functions, take a parameter
+ * 'i' for the case where the caller can afford to provide the former. If this
+ * index is unknown however, the user should pass IDX_NA for the argument.
+ */
+
 struct filesystem_settings {
 	size_t size;
 	size_t entryCount;

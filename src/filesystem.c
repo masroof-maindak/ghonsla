@@ -58,7 +58,13 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir) {
 	return true;
 }
 
-bool append_to_file(char *buf, struct filesystem_settings *fss) {
+bool append_to_file(const char *name, size_t cwd, size_t i, char *buf,
+					struct filesystem_settings *fss) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return false;
+	}
 
 	/*
 	 * TODO: Append to file
@@ -79,10 +85,12 @@ bool append_to_file(char *buf, struct filesystem_settings *fss) {
 /**
  * @brief print the contents of a directory to stdout
  */
-bool print_directory_contents(const char *name, size_t cwd) {
-	size_t i = get_index_of_dir_entry(name, cwd);
-	if (i == SIZE_MAX)
-		return false;
+bool print_directory_contents(const char *name, size_t cwd, size_t i) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return false;
+	}
 
 	for (size_t j = 0; j < dirTable.size; j++)
 		if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
@@ -98,10 +106,12 @@ bool print_directory_contents(const char *name, size_t cwd) {
  *
  * @return the index of the file in the global directory table
  */
-size_t truncate_file(const char *name, size_t cwd) {
-	size_t i = get_index_of_dir_entry(name, cwd);
-	if (i == SIZE_MAX)
-		return SIZE_MAX;
+size_t truncate_file(const char *name, size_t cwd, size_t i) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return SIZE_MAX;
+	}
 
 	size_t blockNum = dirTable.dirs[i].firstBlockIdx, save = blockNum;
 
@@ -121,10 +131,12 @@ size_t truncate_file(const char *name, size_t cwd) {
 /**
  * @brief renames a file in the global directory table. The 'name' is freed
  */
-bool remove_file(const char *name, size_t cwd) {
-	size_t i = truncate_file(name, cwd);
-	if (i == SIZE_MAX)
-		return false;
+bool remove_file(const char *name, size_t cwd, size_t i) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return false;
+	}
 
 	free(dirTable.dirs[i].name);
 	dirTable.dirs[i].name		   = "";
@@ -138,10 +150,12 @@ bool remove_file(const char *name, size_t cwd) {
  * @brief renames an entry in the global directory table. The old 'name' is
  * freed
  */
-bool rename_dir_entry(const char *name, char *newName, size_t cwd) {
-	size_t i = get_index_of_dir_entry(name, cwd);
-	if (i == SIZE_MAX)
-		return false;
+bool rename_dir_entry(const char *name, char *newName, size_t cwd, size_t i) {
+	if (i == IDX_NA) {
+		i = get_index_of_dir_entry(name, cwd);
+		if (i == SIZE_MAX)
+			return false;
+	}
 
 	free(dirTable.dirs[i].name);
 	dirTable.dirs[i].name	 = newName;
@@ -290,11 +304,11 @@ int main(/* int argc, char** argv*/) {
 	char *rename = copy_string("f2_renamed");
 	create_dir_entry(d1name, 0, true);
 	create_dir_entry(f1name, 0, false);
-	remove_file(f1name, 0);
+	remove_file(f1name, 0, IDX_NA);
 	create_dir_entry(f2name, 1, false);
 	create_dir_entry(f3name, 1, false);
-	rename_dir_entry(f2name, rename, 1);
-	print_directory_contents(d1name, 0);
+	rename_dir_entry(f2name, rename, 1, IDX_NA);
+	print_directory_contents(d1name, 0, IDX_NA);
 	free(d1name);
 	free(f3name);
 	free(rename);
