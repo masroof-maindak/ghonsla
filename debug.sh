@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+bp="quick_format_fs"
+bin="./ghonsla"
+
 rm disk.fs
-break="quick_format_fs"
-gdb --quiet -ex "break ${break}" -ex 'run' ./ghonsla
+gdb --quiet -ex "break ${bp}" -ex 'run' "$bin"

@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,4 +121,30 @@ cleanup:
 	}
 
 	return ret;
+}
+
+/**
+ * @brief: parses a string to an unsigned long, setting the destination pointer
+ *
+ * @details if an error occurs, an error message is printed to stderr, so it is
+ * optimal to set
+ */
+void parse_and_set_ul(unsigned long *dst, char *src) {
+	char *endptr;
+
+	errno			  = 0;
+	unsigned long val = strtoul(src, &endptr, 10);
+
+	if (errno == ERANGE) {
+		perror("strtol() in parse_and_set_ul()");
+		return;
+	}
+
+	if (endptr == src) {
+		fprintf(stderr, "%s: No digits found in argument\n", src);
+		return;
+	}
+
+	*dst = val;
+	return;
 }
