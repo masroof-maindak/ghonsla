@@ -48,79 +48,41 @@ char *copy_string(const char *str) {
 }
 
 int read_block(size_t blockNo, size_t blockSize, char *buf) {
-	int ret = 0;
-	long save;
-
-	/* save fpos */
-	save = ftell(fs);
-	if (save == -1) {
-		perror("ftell() in read_block()");
-		return -1;
-	}
-
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
 		perror("fseek() #1 in read_block()");
-		ret = -2;
-		goto cleanup;
+		return -1;
 	}
 
 	/* read chunk */
 	if (fread(buf, 1, blockSize, fs) != blockSize) {
 		if (feof(fs)) {
 			fprintf(stderr, "fread() in read_block - EOF occurred");
-			ret = -3;
-			goto cleanup;
+			return -2;
 		} else if (ferror(fs)) {
 			perror("fread() in read_block()");
-			ret = -4;
-			goto cleanup;
+			return -3;
 		}
 	}
 
-cleanup:
-	/* goto original fpos */
-	if (fseek(fs, save, SEEK_SET) == -1) {
-		perror("fseek() #2 in read_block()");
-		return -5;
-	}
-
-	return ret;
+	return 0;
 }
 
 int write_block(size_t blockNo, size_t blockSize, char *buf) {
-	int ret = 0;
-	long save;
-
-	/* save fpos */
-	save = ftell(fs);
-	if (save == -1) {
-		perror("ftell() in write_block()");
-		return -1;
-	}
-
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() #1 in write_block()");
-		ret = -2;
-		goto cleanup;
+		perror("fseek() in write_block()");
+		return -1;
 	}
 
 	/* write chunk */
 	if (fwrite(buf, 1, blockSize, fs) < blockSize) {
-		ret = -3;
 		if (ferror(fs))
 			perror("fwrite() in write_block()");
+		return -2;
 	}
 
-cleanup:
-	/* reset fpos */
-	if (fseek(fs, save, SEEK_SET) == -1) {
-		perror("fseek() #2 in write_block()");
-		return -4;
-	}
-
-	return ret;
+	return 0;
 }
 
 /**
