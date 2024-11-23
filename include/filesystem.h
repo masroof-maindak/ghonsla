@@ -69,8 +69,9 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt);
 
 /* file-specific */
 bool truncate_file(size_t i, fs_table *dt, fs_table *fat);
-bool append_to_file(size_t i, char *buf, struct fs_settings *fss,
-					const fs_table *dt);
+int write_to_file(size_t i, const char *buf, size_t size,
+				  struct fs_settings *fss, size_t fp, const fs_table *dt,
+				  const fs_table *fat);
 
 /* directory-specific */
 bool print_directory_contents(size_t i, fs_table *dt);

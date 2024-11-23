@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-bp="quick_format_fs"
+bp="write_to_file"
 bin="./ghonsla"
 
 rm disk.fs

@@ -90,6 +90,11 @@ void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	print_directory_contents(ROOT_IDX, dt);
 	puts("");
 
+	size_t pidx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	idx			= get_index_of_dir_entry(f3name, pidx, dt);
+	char s[]	= "I am writing some text!";
+	write_to_file(idx, s, strlen(s), fss, 0, dt, fat);
+
 	quick_format_fs(fss, dt, fat);
 
 	printf("/:\n");

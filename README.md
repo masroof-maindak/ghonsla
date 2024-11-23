@@ -12,29 +12,28 @@ make
 
 - [x] read/write\_block
 - [x] Global directory table/FAT primitives
-- [ ] Basic menu
-- [/] Files
-	- [x] Create
-	- [x] Delete
-	- [x] Rename
-	- [ ] Read
-	- [ ] Write
-        - [/] Append
-        - [ ] Insert
-	- [/] Truncate
+- [ ] ~~Basic menu~~
 - [x] Directories
 	- [x] Create
     - [x] Rename
 	- [x] List Contents
 	- [x] Delete
-- [ ] Directory table/FAT Persistence
-    - [/] Serialise
-    - [ ] Deserialise
 - [x] Partition
 	- [x] Create
         - [x] Parametrisation
         - [x] User input
 	- [x] Format
+- [ ] Files
+	- [x] Create
+	- [x] Delete
+	- [x] Rename
+	- [x] Write (debugging)
+	- [x] Truncate (debugging)
+	- [ ] Read
+    - [ ] Insert?
+- [ ] Directory table/FAT Persistence
+    - [/] Serialise
+    - [ ] Deserialise
 - [ ] Encryption on-disk
 - [ ] Ncurses/Termbox2 TUI
     - [ ] Print filesystem settings on top/bottom row
