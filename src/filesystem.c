@@ -59,7 +59,7 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir) {
 }
 
 bool append_to_file(size_t i, char *buf, struct filesystem_settings *fss) {
-	if (i == SIZE_MAX)
+	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
 		return false;
 
 	/*
@@ -82,7 +82,7 @@ bool append_to_file(size_t i, char *buf, struct filesystem_settings *fss) {
  * @brief print the contents of a directory to stdout.
  */
 bool print_directory_contents(size_t i) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].isDir)
+	if (i == SIZE_MAX || !dirTable.dirs[i].valid || !dirTable.dirs[i].isDir)
 		return false;
 
 	for (size_t j = 0; j < dirTable.size; j++)
@@ -100,7 +100,7 @@ bool print_directory_contents(size_t i) {
  * @return the index of the file in the global directory table
  */
 size_t truncate_file(size_t i) {
-	if (i == SIZE_MAX)
+	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
 		return SIZE_MAX;
 
 	size_t blockNum = dirTable.dirs[i].firstBlockIdx, save = blockNum;
@@ -119,30 +119,22 @@ size_t truncate_file(size_t i) {
 }
 
 /**
- * @brief renames a file in the global directory table. The 'name' is freed
+ * @brief Delete a file or recursively, the contents of a directory. The 'name'
+ * is freed.
  */
-bool remove_file(size_t i) {
-	if (i == SIZE_MAX)
+bool remove_dir_entry(size_t i) {
+	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
 		return false;
+
+	if (dirTable.dirs[i].isDir) {
+		for (size_t j = 0; j < dirTable.size; j++)
+			if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
+				remove_dir_entry(j);
+	}
 
 	free(dirTable.dirs[i].name);
-	dirTable.dirs[i].name		   = "";
-	dirTable.dirs[i].valid		   = false;
-	dirTable.dirs[i].firstBlockIdx = SIZE_MAX;
-
-	return true;
-}
-
-/**
- * @brief Delete the contents of a directory
- */
-bool remove_directory(size_t i) {
-	if (i == SIZE_MAX)
-		return false;
-
-	for (size_t j = 0; j < dirTable.size; j++)
-		if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
-			(dirTable.dirs[j].isDir) ? remove_directory(j) : remove_file(j);
+	dirTable.dirs[i].name  = "";
+	dirTable.dirs[i].valid = false;
 
 	return true;
 }
@@ -152,7 +144,7 @@ bool remove_directory(size_t i) {
  * freed
  */
 bool rename_dir_entry(char *newName, size_t i) {
-	if (i == SIZE_MAX)
+	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
 		return false;
 
 	free(dirTable.dirs[i].name);
@@ -284,11 +276,23 @@ fclose:
 	return false;
 }
 
+/**
+ * @brief: clears state-relevant tables
+ */
+void quick_format_fs() {
+	for (size_t i = 1; i < dirTable.size; i++)
+		remove_dir_entry(i);
+
+	/* TODO: clear FAT */
+}
+
 void load_config(struct filesystem_settings *fss) {
 	/*
 	 * TODO: ask user for config and populate `fss`
 	 */
 }
+
+void tests();
 
 int main(/* int argc, char** argv*/) {
 	int ret									  = 0;
@@ -303,29 +307,7 @@ int main(/* int argc, char** argv*/) {
 
 	/* TODO: menu - later: loop w/ ncurses */
 
-	/* TESTING */
-	char *d1name = copy_string("firstDir");
-	char *f1name = copy_string("f1");
-	char *f2name = copy_string("f2");
-	char *f3name = copy_string("f3");
-	char *rename = copy_string("f2_renamed");
-	size_t idx = 0;
-
-	create_dir_entry(d1name, 0, true);
-	create_dir_entry(f1name, 0, false);
-	idx = get_index_of_dir_entry(f1name, 0);
-	remove_file(idx);
-	create_dir_entry(f2name, 1, false);
-	create_dir_entry(f3name, 1, false);
-	idx = get_index_of_dir_entry(f2name, 1);
-	rename_dir_entry(rename, idx);
-	idx = get_index_of_dir_entry(d1name, 0);
-	print_directory_contents(idx);
-
-	free(d1name);
-	free(f3name);
-	free(rename);
-	/* --------*/
+	tests();
 
 	/* cleanup: */
 	if (fclose(fs) == EOF)
@@ -373,4 +355,59 @@ bool open_fs(const struct filesystem_settings *fss) {
 	/* TODO: load fat, dirTable, and user settings from disk */
 
 	return true;
+}
+
+void tests() {
+	char *firstDir	= copy_string("firstDir");
+	char *f1name	= copy_string("f1");
+	char *f2name	= copy_string("f2");
+	char *f3name	= copy_string("f3");
+	char *rename	= copy_string("f2_renamed");
+	char *secondDir = copy_string("secondDir");
+	char *f4name	= copy_string("f4");
+	size_t idx		= ROOT_IDX;
+
+	create_dir_entry(firstDir, ROOT_IDX, true);
+	create_dir_entry(f1name, ROOT_IDX, false);
+
+	idx = get_index_of_dir_entry(f1name, ROOT_IDX);
+	remove_dir_entry(idx);
+
+	create_dir_entry(f2name, 1, false);
+	create_dir_entry(f3name, 1, false);
+
+	idx = get_index_of_dir_entry(f2name, 1);
+	rename_dir_entry(rename, idx);
+
+	printf("firstDir\n");
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX);
+	print_directory_contents(idx);
+	create_dir_entry(secondDir, 1, true);
+	puts("");
+
+	idx = get_index_of_dir_entry(secondDir, 1);
+	create_dir_entry(f4name, idx, false);
+	printf("secondDir\n");
+	print_directory_contents(idx);
+	puts("");
+
+	printf("firstDir\n");
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX);
+	print_directory_contents(idx);
+	puts("");
+
+	printf("/:\n");
+	print_directory_contents(ROOT_IDX);
+	puts("");
+
+	/* FIXME */
+	quick_format_fs();
+	printf("/:\n");
+	print_directory_contents(ROOT_IDX);
+
+	free(firstDir);
+	free(f3name);
+	free(rename);
+	free(secondDir);
+	free(f4name);
 }

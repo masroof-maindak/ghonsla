@@ -12,15 +12,15 @@
 	- [ ] Read
 	- [ ] Write
 	- [/] Truncate
-- [/] Directories
+- [x] Directories
 	- [x] Create
     - [x] Rename
 	- [x] List Contents
-	- [x] Delete (TEST)
+	- [x] Delete
 - [ ] Serialise and deserialise global directory table/FAT
 - [/] Partition
 	- [x] Create
-	- [ ] Format
+	- [/] Format
 - [ ] Encryption on-disk
 - [ ] Ncurses/Termbox2 TUI
 - [ ] Optimise disk writes
