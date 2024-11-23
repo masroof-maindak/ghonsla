@@ -9,10 +9,7 @@
 #include "../include/filesystem.h"
 #include "../include/utils.h"
 
-FILE *fs		  = NULL;
-fs_table dirTable = {.size = 0, .dirs = NULL};
-fs_table faT	  = {.size = 0, .blocks = NULL};
-/* CHECK: don't give these global scope? */
+FILE *fs = NULL;
 
 int get_dte_len(const dir_entry *dte) {
 	return (sizeof(dir_entry) - sizeof(char *) + dte->nameLen);
@@ -22,14 +19,16 @@ int get_dte_len(const dir_entry *dte) {
  * @brief return the index of an entry in the global directory table
  *
  * @return SIZE_MAX if the name being searched for was not found
+ *
+ * @param dt directory table
  */
-size_t get_index_of_dir_entry(const char *name, size_t cwd) {
+size_t get_index_of_dir_entry(const char *name, size_t cwd, fs_table *dt) {
 	unsigned short nameLen = strlen(name);
 
-	for (size_t i = 0; i < dirTable.size; i++)
-		if (dirTable.dirs[i].valid && dirTable.dirs[i].nameLen == nameLen &&
-			dirTable.dirs[i].parentIdx == cwd &&
-			strncmp(name, dirTable.dirs[i].name, nameLen) == 0)
+	for (size_t i = 0; i < dt->size; i++)
+		if (dt->dirs[i].valid && dt->dirs[i].nameLen == nameLen &&
+			dt->dirs[i].parentIdx == cwd &&
+			strncmp(name, dt->dirs[i].name, nameLen) == 0)
 			return i;
 
 	return SIZE_MAX;
@@ -39,29 +38,32 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd) {
  * @brief creates a new file or directory under the parent directory at `cwd`
  * index, if a free entry is found. `name` must point to a heap-allocated
  * string.
+ *
+ * @param dt directory table
  */
-bool create_dir_entry(char *name, size_t cwd, bool isDir) {
+bool create_dir_entry(char *name, size_t cwd, bool isDir, fs_table *dt) {
 	size_t i = 1, nameLen = strlen(name);
-	for (; i < dirTable.size; i++)
-		if (!dirTable.dirs[i].valid)
+	for (; i < dt->size; i++)
+		if (!dt->dirs[i].valid)
 			break;
 
-	if (i == dirTable.size || nameLen > MAX_NAME_LEN)
+	if (i == dt->size || nameLen > MAX_NAME_LEN)
 		return false;
 
-	dirTable.dirs[i] = (dir_entry){.valid		  = true,
-								   .isDir		  = isDir,
-								   .nameLen		  = nameLen,
-								   .name		  = name,
-								   .size		  = 0,
-								   .parentIdx	  = cwd,
-								   .firstBlockIdx = SIZE_MAX};
+	dt->dirs[i] = (dir_entry){.valid		 = true,
+							  .isDir		 = isDir,
+							  .nameLen		 = nameLen,
+							  .name			 = name,
+							  .size			 = 0,
+							  .parentIdx	 = cwd,
+							  .firstBlockIdx = SIZE_MAX};
 
 	return true;
 }
 
-bool append_to_file(size_t i, char *buf, struct filesystem_settings *fss) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
+bool append_to_file(size_t i, char *buf, struct fs_settings *fss,
+					fs_table *dt) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
 	/*
@@ -83,14 +85,14 @@ bool append_to_file(size_t i, char *buf, struct filesystem_settings *fss) {
 /**
  * @brief print the contents of a directory to stdout.
  */
-bool print_directory_contents(size_t i) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].valid || !dirTable.dirs[i].isDir)
+bool print_directory_contents(size_t i, fs_table *dt) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid || !dt->dirs[i].isDir)
 		return false;
 
-	for (size_t j = 0; j < dirTable.size; j++)
-		if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
-			printf("%s%s%s\n", dirTable.dirs[j].isDir ? BOLD_BLUE : CYAN,
-				   dirTable.dirs[j].name, RESET);
+	for (size_t j = 0; j < dt->size; j++)
+		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i)
+			printf("%s%s%s\n", dt->dirs[j].isDir ? BOLD_BLUE : CYAN,
+				   dt->dirs[j].name, RESET);
 
 	return true;
 }
@@ -100,15 +102,15 @@ bool print_directory_contents(size_t i) {
  * other files' writes. Note that the final block of a file's content
  * chain must have it's 'next' set to SIZE_MAX.
  */
-bool truncate_file(size_t i) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
+bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
-	size_t blockNum = dirTable.dirs[i].firstBlockIdx, save = blockNum;
+	size_t blockNum = dt->dirs[i].firstBlockIdx, save = blockNum;
 
 	while (blockNum != SIZE_MAX) {
-		faT.blocks[blockNum].used = 0;
-		blockNum				  = faT.blocks[blockNum].next;
+		fat->blocks[blockNum].used = 0;
+		blockNum				   = fat->blocks[blockNum].next;
 	}
 
 	/*
@@ -123,21 +125,21 @@ bool truncate_file(size_t i) {
  * @brief Delete a file or recursively, the contents of a directory. The 'name'
  * is freed.
  */
-bool remove_dir_entry(size_t i) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
+bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
-	if (!dirTable.dirs[i].isDir) {
-		truncate_file(i);
+	if (!dt->dirs[i].isDir) {
+		truncate_file(i, dt, fat);
 	} else {
-		for (size_t j = 0; j < dirTable.size; j++)
-			if (dirTable.dirs[j].valid && dirTable.dirs[j].parentIdx == i)
-				remove_dir_entry(j);
+		for (size_t j = 0; j < dt->size; j++)
+			if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i)
+				remove_dir_entry(j, dt, fat);
 	}
 
-	free(dirTable.dirs[i].name);
-	dirTable.dirs[i].name  = "";
-	dirTable.dirs[i].valid = false;
+	free(dt->dirs[i].name);
+	dt->dirs[i].name  = "";
+	dt->dirs[i].valid = false;
 
 	return true;
 }
@@ -146,13 +148,13 @@ bool remove_dir_entry(size_t i) {
  * @brief renames an entry in the global directory table. The old 'name' is
  * freed
  */
-bool rename_dir_entry(char *newName, size_t i) {
-	if (i == SIZE_MAX || !dirTable.dirs[i].valid)
+bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
-	free(dirTable.dirs[i].name);
-	dirTable.dirs[i].name	 = newName;
-	dirTable.dirs[i].nameLen = strlen(newName);
+	free(dt->dirs[i].name);
+	dt->dirs[i].name	= newName;
+	dt->dirs[i].nameLen = strlen(newName);
 
 	return true;
 }
@@ -165,12 +167,12 @@ bool rename_dir_entry(char *newName, size_t i) {
  *
  * @return idx of the buffer after filling it up
  */
-size_t dump_dir_table_to_buf(char *buf, size_t idx) {
+size_t dump_dir_table_to_buf(char *buf, size_t idx, fs_table *dt) {
 	// --- TODO: abstract out
 	/* size_t cap = 0; */
 	/**/
-	/* for (size_t i = 0; i < dirT.size; i++) */
-	/* 	cap += get_dte_len(&dirT.u.dirTEntries[i]); */
+	/* for (size_t i = 0; i < dt->size; i++) */
+	/* 	cap += get_dte_len(&dt->u.dirTEntries[i]); */
 	/**/
 	/* char *buf = malloc(cap); */
 	/* if (buf == NULL) { */
@@ -179,8 +181,8 @@ size_t dump_dir_table_to_buf(char *buf, size_t idx) {
 	/* } */
 	// ---
 
-	for (size_t i = 0; i < dirTable.size; i++)
-		write_dir_entry_to_buf(&dirTable.dirs[i], buf, &idx);
+	for (size_t i = 0; i < dt->size; i++)
+		write_dir_entry_to_buf(&dt->dirs[i], buf, &idx);
 
 	return idx;
 }
@@ -189,18 +191,20 @@ size_t dump_dir_table_to_buf(char *buf, size_t idx) {
  * @brief creates a directory table in memory, populates it with the root entry
  * and garbage entries
  */
-void init_new_dir_t(int entryCount, fs_table *dirT) {
-	dirT->size = entryCount;
-	dirT->dirs = malloc(sizeof(dir_entry) * dirT->size);
+bool init_new_dir_t(int entryCount, fs_table *dt) {
+	dt->size = entryCount;
+	dt->dirs = malloc(sizeof(dir_entry) * dt->size);
 
-	if (dirT->dirs == NULL) {
+	if (dt->dirs == NULL) {
 		perror("malloc() in init_new_dir_t()");
-		return;
+		return false;
 	}
 
-	dirT->dirs[0] = DIR_TABLE_ROOT_ENTRY;
-	for (size_t i = 1; i < dirT->size; i++)
-		dirT->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
+	dt->dirs[0] = DIR_TABLE_ROOT_ENTRY;
+	for (size_t i = 1; i < dt->size; i++)
+		dt->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
+
+	return true;
 }
 
 void clear_out_fat(size_t nmb, fs_table *faT) {
@@ -223,16 +227,17 @@ void clear_out_fat(size_t nmb, fs_table *faT) {
  * @param nmb number of blocks used for metadata (i.e tables and other
  * information to persist on disk)
  */
-void init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
+bool init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
 	faT->size	= nb;
 	faT->blocks = malloc(faT->size * sizeof(fat_entry));
 
 	if (faT->blocks == NULL) {
 		perror("malloc() in init_new_fat()");
-		return;
+		return false;
 	}
 
 	clear_out_fat(nmb, faT);
+	return true;
 }
 
 /**
@@ -241,7 +246,7 @@ void init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
  * already exists before this function is called, the caller should perform all
  * relevant cleanup first, namely freeing the global structures.
  */
-bool init_new_fs(const struct filesystem_settings *fss) {
+bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	/* open file for writing */
 	if ((fs = fopen(FS_NAME, "w+")) == NULL) {
 		perror("fopen() in create_empty_fs()");
@@ -249,13 +254,11 @@ bool init_new_fs(const struct filesystem_settings *fss) {
 	}
 
 	/* create relevant tables in memory */
-	init_new_dir_t(fss->entryCount, &dirTable);
-	if (dirTable.dirs == NULL)
+	if (!init_new_dir_t(fss->entryCount, dt))
 		goto fclose;
 
-	init_new_fat(fss->numBlocks, fss->numMdBlocks, &faT);
-	if (faT.blocks == NULL) {
-		free(dirTable.dirs);
+	if (!init_new_fat(fss->numBlocks, fss->numMdBlocks, fat)) {
+		free(dt->dirs);
 		goto fclose;
 	}
 
@@ -265,16 +268,16 @@ bool init_new_fs(const struct filesystem_settings *fss) {
 	char *buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
 		perror("calloc() in create_empty_fs()");
-		free(dirTable.dirs);
-		free(faT.blocks);
+		free(dt->dirs);
+		free(fat->blocks);
 		goto fclose;
 	}
 
 	for (size_t i = 0; i < fss->numBlocks; i++) {
 		if (write_block(i, fss->blockSize, buf) != 0) {
 			fprintf(stderr, "create_empty_fs(): failed at block #%ld\n", i);
-			free(dirTable.dirs);
-			free(faT.blocks);
+			free(dt->dirs);
+			free(fat->blocks);
 			free(buf);
 			goto fclose;
 		}
@@ -290,15 +293,15 @@ fclose:
 }
 
 /**
- * @brief: clears state-relevant tables
+ * @brief: resets state-relevant tables to make them available to write over
  */
-void quick_format_fs(struct filesystem_settings *fss) {
-	for (size_t i = 1; i < dirTable.size; i++)
-		remove_dir_entry(i);
-	clear_out_fat(fss->numMdBlocks, &faT);
+void quick_format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
+	for (size_t i = 1; i < dt->size; i++)
+		remove_dir_entry(i, dt, fat);
+	clear_out_fat(fss->numMdBlocks, fat);
 }
 
-bool calc_and_validate_block_no(struct filesystem_settings *fss) {
+bool calc_and_validate_block_no(struct fs_settings *fss) {
 	fss->numBlocks = fss->size * 1024 * 1024 / fss->blockSize;
 
 	const size_t dirTBytes = MAX_SIZE_DIR_ENTRY * fss->entryCount,
@@ -322,7 +325,7 @@ bool calc_and_validate_block_no(struct filesystem_settings *fss) {
  * @brief parse user args for filesystem creation. Unset or erroneous arguments
  * are defaulted.
  */
-bool load_config(struct filesystem_settings *fss, int argc, char **argv) {
+bool load_config(struct fs_settings *fss, int argc, char **argv) {
 	int opt;
 	*fss = DEFAULT_CFG;
 
@@ -362,17 +365,18 @@ bool load_config(struct filesystem_settings *fss, int argc, char **argv) {
 	return true;
 }
 
-void tests(struct filesystem_settings *fss);
+void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat);
 
 /**
  * @details opens the filesystem file if it exists, or creates a new one if not,
  */
-bool init(struct filesystem_settings *fss, int argc, char **argv) {
-	switch (open_fs(fss, argc)) {
+bool init(struct fs_settings *fss, int argc, char **argv, fs_table *dt,
+		  fs_table *fat) {
+	switch (open_fs(fss, argc, dt, fat)) {
 	case 0: /* failed to open file */
 		return false;
 	case 1: /* file not present */
-		if (!load_config(fss, argc, argv) || !init_new_fs(fss))
+		if (!load_config(fss, argc, argv) || !init_new_fs(fss, dt, fat))
 			return false;
 		break;
 	case 2: /* file present and loaded */
@@ -383,21 +387,23 @@ bool init(struct filesystem_settings *fss, int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-	int ret = 0;
-	struct filesystem_settings fss;
+	int ret		 = 0;
+	fs_table dt	 = {.size = 0, .dirs = NULL};
+	fs_table fat = {.size = 0, .blocks = NULL};
+	struct fs_settings fss;
 
-	if (!init(&fss, argc, argv))
+	if (!init(&fss, argc, argv, &dt, &fat))
 		return 1;
 
 	/* TODO: ncurses menu loop */
 
-	tests(&fss);
+	tests(&fss, &dt, &fat);
 
 	/* cleanup: */
 	if (fclose(fs) == EOF)
 		perror("fclose() in main()");
-	free(dirTable.dirs);
-	free(faT.blocks);
+	free(dt.dirs);
+	free(fat.blocks);
 	return ret;
 }
 
@@ -426,7 +432,7 @@ void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
 /**
  * @brief creates or opens an existing filesystem file
  */
-bool open_fs(struct filesystem_settings *fss, int argc) {
+bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat) {
 	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
 		if (errno == ENOENT) {
 			/* doesn't exist */
@@ -440,12 +446,12 @@ bool open_fs(struct filesystem_settings *fss, int argc) {
 	if (argc > 1)
 		printf("Disk file found, ignoring args\n");
 
-	/* TODO: load fat, dirTable, and user settings from disk */
+	/* TODO: load fat, dt, and user settings from disk */
 
 	return true;
 }
 
-void tests(struct filesystem_settings *fss) {
+void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	char *firstDir	= copy_string("firstDir");
 	char *f1name	= copy_string("f1");
 	char *f2name	= copy_string("f2");
@@ -455,43 +461,43 @@ void tests(struct filesystem_settings *fss) {
 	char *f4name	= copy_string("f4");
 	size_t idx		= ROOT_IDX;
 
-	create_dir_entry(firstDir, ROOT_IDX, true);
-	create_dir_entry(f1name, ROOT_IDX, false);
+	create_dir_entry(firstDir, ROOT_IDX, true, dt);
+	create_dir_entry(f1name, ROOT_IDX, false, dt);
 
-	idx = get_index_of_dir_entry(f1name, ROOT_IDX);
-	remove_dir_entry(idx);
+	idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
+	remove_dir_entry(idx, dt, fat);
 
-	create_dir_entry(f2name, 1, false);
-	create_dir_entry(f3name, 1, false);
+	create_dir_entry(f2name, 1, false, dt);
+	create_dir_entry(f3name, 1, false, dt);
 
-	idx = get_index_of_dir_entry(f2name, 1);
-	rename_dir_entry(rename, idx);
+	idx = get_index_of_dir_entry(f2name, 1, dt);
+	rename_dir_entry(rename, idx, dt);
 
 	printf("firstDir\n");
-	idx = get_index_of_dir_entry(firstDir, ROOT_IDX);
-	print_directory_contents(idx);
-	create_dir_entry(secondDir, 1, true);
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	print_directory_contents(idx, dt);
+	create_dir_entry(secondDir, 1, true, dt);
 	puts("");
 
-	idx = get_index_of_dir_entry(secondDir, 1);
-	create_dir_entry(f4name, idx, false);
+	idx = get_index_of_dir_entry(secondDir, 1, dt);
+	create_dir_entry(f4name, idx, false, dt);
 	printf("secondDir\n");
-	print_directory_contents(idx);
+	print_directory_contents(idx, dt);
 	puts("");
 
 	printf("firstDir\n");
-	idx = get_index_of_dir_entry(firstDir, ROOT_IDX);
-	print_directory_contents(idx);
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	print_directory_contents(idx, dt);
 	puts("");
 
 	printf("/:\n");
-	print_directory_contents(ROOT_IDX);
+	print_directory_contents(ROOT_IDX, dt);
 	puts("");
 
-	quick_format_fs(fss);
+	quick_format_fs(fss, dt, fat);
 
 	printf("/:\n");
-	print_directory_contents(ROOT_IDX);
+	print_directory_contents(ROOT_IDX, dt);
 
 	/* free(firstDir); */
 	/* free(f3name); */

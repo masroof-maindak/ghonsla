@@ -6,7 +6,7 @@
 
 #define ROOT_IDX 0
 
-struct filesystem_settings {
+struct fs_settings {
 	/* Configurable; determined via CLI args */
 
 	size_t size;	   /* filesystem size (in MBs) */
@@ -45,7 +45,7 @@ typedef struct {
 } fs_table;
 
 void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *s);
-bool open_fs(struct filesystem_settings *fss, int argc);
-bool load_config(struct filesystem_settings *fss, int argc, char **argv);
+bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat);
+bool load_config(struct fs_settings *fss, int argc, char **argv);
 
 #endif // FILESYSTEM_H

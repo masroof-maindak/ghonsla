@@ -30,9 +30,9 @@
 				.firstBlockIdx = SIZE_MAX};
 
 #define DEFAULT_CFG                                                            \
-	(struct filesystem_settings){.size		 = FS_SIZE,                        \
-								 .entryCount = NUM_ENTRIES,                    \
-								 .blockSize	 = BLOCK_SIZE,                     \
-								 .fBlocks	 = FILE_BLOCKS};
+	(struct fs_settings){.size		 = FS_SIZE,                                \
+						 .entryCount = NUM_ENTRIES,                            \
+						 .blockSize	 = BLOCK_SIZE,                             \
+						 .fBlocks	 = FILE_BLOCKS};
 
 #endif // DEFAULTS_H
