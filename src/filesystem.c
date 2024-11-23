@@ -1,16 +1,44 @@
 #include <errno.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/bool.h"
+extern FILE *fs;
+
 #include "../include/defaults.h"
 #include "../include/filesystem.h"
 #include "../include/utils.h"
 
-FILE *fs = NULL;
+/**
+ * @brief creates or opens an existing filesystem file
+ */
+bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat) {
+	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
+		if (errno == ENOENT) {
+			/* doesn't exist */
+			return true;
+		} else {
+			perror("fopen() in init_fs()");
+			return false;
+		}
+	}
 
+	if (argc > 1)
+		printf("Disk file found, ignoring args\n");
+
+	/* TODO: load fat, dt, and user settings from disk */
+	*fss	 = DEFAULT_CFG;
+	dt->size = fat->size = 0;
+	dt->dirs			 = NULL;
+	fat->blocks			 = NULL;
+	//---
+
+	return true;
+}
+
+/**
+ * @brief gets the size of an entry in a directory table
+ */
 int get_dte_len(const dir_entry *dte) {
 	return (sizeof(dir_entry) - sizeof(char *) + dte->nameLen);
 }
@@ -22,7 +50,8 @@ int get_dte_len(const dir_entry *dte) {
  *
  * @param dt directory table
  */
-size_t get_index_of_dir_entry(const char *name, size_t cwd, fs_table *dt) {
+size_t get_index_of_dir_entry(const char *name, size_t cwd,
+							  const fs_table *dt) {
 	unsigned short nameLen = strlen(name);
 
 	for (size_t i = 0; i < dt->size; i++)
@@ -41,11 +70,14 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd, fs_table *dt) {
  *
  * @param dt directory table
  */
-bool create_dir_entry(char *name, size_t cwd, bool isDir, fs_table *dt) {
-	size_t i = 1, nameLen = strlen(name);
+bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
+	/* find free spot */
+	size_t i = 1;
 	for (; i < dt->size; i++)
 		if (!dt->dirs[i].valid)
 			break;
+
+	size_t nameLen = strlen(name);
 
 	if (i == dt->size || nameLen > MAX_NAME_LEN)
 		return false;
@@ -62,7 +94,7 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, fs_table *dt) {
 }
 
 bool append_to_file(size_t i, char *buf, struct fs_settings *fss,
-					fs_table *dt) {
+					const fs_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
@@ -106,17 +138,22 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
-	size_t blockNum = dt->dirs[i].firstBlockIdx, save = blockNum;
+	size_t bNum = dt->dirs[i].firstBlockIdx;
+	size_t save = bNum;
 
-	while (blockNum != SIZE_MAX) {
-		fat->blocks[blockNum].used = 0;
-		blockNum				   = fat->blocks[blockNum].next;
+	while (bNum != SIZE_MAX) {
+		fat->blocks[bNum].used = 0;
+		save				   = bNum;
+		bNum				   = fat->blocks[bNum].next;
 	}
 
 	/*
 	 * TODO: point the last block in a file's content's chain to the 'first
 	 * free' and set first free to point to the original start of this file
 	 */
+
+	printf("%ld", save);
+	//---
 
 	return true;
 }
@@ -167,8 +204,8 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
  *
  * @return idx of the buffer after filling it up
  */
-size_t dump_dir_table_to_buf(char *buf, size_t idx, fs_table *dt) {
-	// --- TODO: abstract out
+size_t dump_dir_table_to_buf(char *buf, size_t idx, const fs_table *dt) {
+	//--- TODO: abstract out
 	/* size_t cap = 0; */
 	/**/
 	/* for (size_t i = 0; i < dt->size; i++) */
@@ -179,12 +216,46 @@ size_t dump_dir_table_to_buf(char *buf, size_t idx, fs_table *dt) {
 	/* 	perror("malloc() in dump_entries_to_buf()"); */
 	/* 	return 0; */
 	/* } */
-	// ---
+	//---
 
 	for (size_t i = 0; i < dt->size; i++)
 		write_dir_entry_to_buf(&dt->dirs[i], buf, &idx);
 
 	return idx;
+}
+
+/**
+ * @details writes a directory table entry to a buffer's i'th index. It is the
+ * caller's responsibility to ensure that the buffer is large enough to hold the
+ * entry. The index is incremented accordingly.
+ */
+void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
+	memcpy(b + *i, &e->valid, sizeof(bool));
+	*i += sizeof(bool);
+	memcpy(b + *i, &e->isDir, sizeof(bool));
+	*i += sizeof(bool);
+	memcpy(b + *i, &e->nameLen, sizeof(unsigned short));
+	*i += sizeof(unsigned short);
+	memcpy(b + *i, e->name, e->nameLen);
+	*i += e->nameLen;
+	memcpy(b + *i, &e->size, sizeof(size_t));
+	*i += sizeof(size_t);
+	memcpy(b + *i, &e->parentIdx, sizeof(size_t));
+	*i += sizeof(size_t);
+	memcpy(b + *i, &e->firstBlockIdx, sizeof(size_t));
+	*i += sizeof(size_t);
+}
+
+void clear_out_fat(size_t nmb, fs_table *faT) {
+	/* zero out blocks holding metadata */
+	memset(faT->blocks, 0, nmb * sizeof(fat_entry));
+
+	/* initialise the FAT as a free list */
+	for (size_t i = nmb; i < faT->size; i++)
+		faT->blocks[i] = (fat_entry){.used = 0, .next = i + 1};
+
+	/* any chain's final block points to SIZE_MAX */
+	faT->blocks[faT->size - 1].next = SIZE_MAX;
 }
 
 /**
@@ -205,18 +276,6 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
 		dt->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
 
 	return true;
-}
-
-void clear_out_fat(size_t nmb, fs_table *faT) {
-	/* zero out blocks holding metadata */
-	memset(faT->blocks, 0, nmb * sizeof(fat_entry));
-
-	/* initialise the FAT as a free list */
-	for (size_t i = nmb; i < faT->size; i++)
-		faT->blocks[i] = (fat_entry){.used = 0, .next = i + 1};
-
-	/* any chain's final block points to SIZE_MAX */
-	faT->blocks[faT->size - 1].next = SIZE_MAX;
 }
 
 /**
@@ -363,145 +422,4 @@ bool load_config(struct fs_settings *fss, int argc, char **argv) {
 		return false;
 
 	return true;
-}
-
-void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat);
-
-/**
- * @details opens the filesystem file if it exists, or creates a new one if not,
- */
-bool init(struct fs_settings *fss, int argc, char **argv, fs_table *dt,
-		  fs_table *fat) {
-	switch (open_fs(fss, argc, dt, fat)) {
-	case 0: /* failed to open file */
-		return false;
-	case 1: /* file not present */
-		if (!load_config(fss, argc, argv) || !init_new_fs(fss, dt, fat))
-			return false;
-		break;
-	case 2: /* file present and loaded */
-		break;
-	}
-
-	return true;
-}
-
-int main(int argc, char **argv) {
-	int ret		 = 0;
-	fs_table dt	 = {.size = 0, .dirs = NULL};
-	fs_table fat = {.size = 0, .blocks = NULL};
-	struct fs_settings fss;
-
-	if (!init(&fss, argc, argv, &dt, &fat))
-		return 1;
-
-	/* TODO: ncurses menu loop */
-
-	tests(&fss, &dt, &fat);
-
-	/* cleanup: */
-	if (fclose(fs) == EOF)
-		perror("fclose() in main()");
-	free(dt.dirs);
-	free(fat.blocks);
-	return ret;
-}
-
-/**
- * @details writes a directory table entry to a buffer's i'th index. It is the
- * caller's responsibility to ensure that the buffer is large enough to hold the
- * entry. The index is incremented accordingly.
- */
-void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
-	memcpy(b + *i, &e->valid, sizeof(bool));
-	*i += sizeof(bool);
-	memcpy(b + *i, &e->isDir, sizeof(bool));
-	*i += sizeof(bool);
-	memcpy(b + *i, &e->nameLen, sizeof(unsigned short));
-	*i += sizeof(unsigned short);
-	memcpy(b + *i, e->name, e->nameLen);
-	*i += e->nameLen;
-	memcpy(b + *i, &e->size, sizeof(size_t));
-	*i += sizeof(size_t);
-	memcpy(b + *i, &e->parentIdx, sizeof(size_t));
-	*i += sizeof(size_t);
-	memcpy(b + *i, &e->firstBlockIdx, sizeof(size_t));
-	*i += sizeof(size_t);
-}
-
-/**
- * @brief creates or opens an existing filesystem file
- */
-bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat) {
-	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
-		if (errno == ENOENT) {
-			/* doesn't exist */
-			return true;
-		} else {
-			perror("fopen() in init_fs()");
-			return false;
-		}
-	}
-
-	if (argc > 1)
-		printf("Disk file found, ignoring args\n");
-
-	/* TODO: load fat, dt, and user settings from disk */
-
-	return true;
-}
-
-void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
-	char *firstDir	= copy_string("firstDir");
-	char *f1name	= copy_string("f1");
-	char *f2name	= copy_string("f2");
-	char *f3name	= copy_string("f3");
-	char *rename	= copy_string("f2_renamed");
-	char *secondDir = copy_string("secondDir");
-	char *f4name	= copy_string("f4");
-	size_t idx		= ROOT_IDX;
-
-	create_dir_entry(firstDir, ROOT_IDX, true, dt);
-	create_dir_entry(f1name, ROOT_IDX, false, dt);
-
-	idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
-	remove_dir_entry(idx, dt, fat);
-
-	create_dir_entry(f2name, 1, false, dt);
-	create_dir_entry(f3name, 1, false, dt);
-
-	idx = get_index_of_dir_entry(f2name, 1, dt);
-	rename_dir_entry(rename, idx, dt);
-
-	printf("firstDir\n");
-	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
-	print_directory_contents(idx, dt);
-	create_dir_entry(secondDir, 1, true, dt);
-	puts("");
-
-	idx = get_index_of_dir_entry(secondDir, 1, dt);
-	create_dir_entry(f4name, idx, false, dt);
-	printf("secondDir\n");
-	print_directory_contents(idx, dt);
-	puts("");
-
-	printf("firstDir\n");
-	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
-	print_directory_contents(idx, dt);
-	puts("");
-
-	printf("/:\n");
-	print_directory_contents(ROOT_IDX, dt);
-	puts("");
-
-	quick_format_fs(fss, dt, fat);
-
-	printf("/:\n");
-	print_directory_contents(ROOT_IDX, dt);
-
-	/* free(firstDir); */
-	/* free(f3name); */
-	/* free(rename); */
-	/* free(secondDir); */
-	/* free(f4name); */
 }

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define ROOT_IDX 0
+#include "../include/bool.h"
 
 struct fs_settings {
 	/* Configurable; determined via CLI args */
@@ -44,8 +44,35 @@ typedef struct {
 	};
 } fs_table;
 
+/* persistence */
+size_t dump_dir_table_to_buf(char *buf, size_t idx, const fs_table *dt);
 void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *s);
 bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat);
+
+/* partition management */
+bool init_new_dir_t(int entryCount, fs_table *dt);
+bool init_new_fat(size_t nb, size_t nmb, fs_table *faT);
+bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat);
+void clear_out_fat(size_t nmb, fs_table *faT);
+void quick_format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);
+
+/* directory-table generic */
+int get_size_of_dir_entry(const dir_entry *dte);
+size_t get_index_of_dir_entry(const char *name, size_t cwd, const fs_table *dt);
+bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt);
+bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat);
+bool rename_dir_entry(char *newName, size_t i, fs_table *dt);
+
+/* file-specific */
+bool truncate_file(size_t i, fs_table *dt, fs_table *fat);
+bool append_to_file(size_t i, char *buf, struct fs_settings *fss,
+					const fs_table *dt);
+
+/* directory-specific */
+bool print_directory_contents(size_t i, fs_table *dt);
+
+/* fs_settings */
 bool load_config(struct fs_settings *fss, int argc, char **argv);
+bool calc_and_validate_block_no(struct fs_settings *fss);
 
 #endif // FILESYSTEM_H
