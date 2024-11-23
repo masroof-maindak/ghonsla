@@ -17,3 +17,5 @@ debug:
 
 clean:
 	rm -f *.o ghonsla disk.fs
+
+.PHONY: clean debug
