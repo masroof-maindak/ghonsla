@@ -7,7 +7,7 @@
 extern FILE *fs;
 
 /**
- * @detail if adding `add` bytes to `buf`, (whose maximum capacity is
+ * @details if adding `add` bytes to `buf`, (whose maximum capacity is
  * `capacity` and currently has `idx` bytes written), would overflow it, then
  * double `buf`. `capacity` is updated in this case.
  *
