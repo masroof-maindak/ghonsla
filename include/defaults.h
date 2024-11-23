@@ -33,6 +33,6 @@
 	(struct fs_settings){.size		 = FS_SIZE,                                \
 						 .entryCount = NUM_ENTRIES,                            \
 						 .blockSize	 = BLOCK_SIZE,                             \
-						 .fBlocks	 = FILE_BLOCKS};
+						 .fMaxBlocks = FILE_BLOCKS};
 
 #endif // DEFAULTS_H

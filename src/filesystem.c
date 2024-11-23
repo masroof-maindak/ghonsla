@@ -3,11 +3,18 @@
 #include <string.h>
 #include <unistd.h>
 
-extern FILE *fs;
-
 #include "../include/defaults.h"
 #include "../include/filesystem.h"
 #include "../include/utils.h"
+
+extern FILE *fs;
+
+size_t firstFree; // idx of first block in the 'freeList'
+#define INCREMENT_FIRST_FREE                                                   \
+	do {                                                                       \
+		if (firstFree != SIZE_MAX)                                             \
+			firstFree = fat->blocks[firstFree].next;                           \
+	} while (0)
 
 /**
  * @brief creates or opens an existing filesystem file
@@ -64,9 +71,9 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd,
 }
 
 /**
- * @brief creates a new file or directory under the parent directory at `cwd`
- * index, if a free entry is found. `name` must point to a heap-allocated
- * string.
+ * @brief creates a new file or directory under the parent directory at
+ * `cwd` index, if a free entry is found. `name` must point to a
+ * heap-allocated string.
  *
  * @param dt directory table
  */
@@ -132,10 +139,10 @@ bool print_directory_contents(size_t i, fs_table *dt) {
 /**
  * @brief remove the entire contents of a file, i.e make them 'available' for
  * other files' writes. Note that the final block of a file's content
- * chain must have it's 'next' set to SIZE_MAX.
+ * chain has it's 'next' set to SIZE_MAX.
  */
 bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
-	if (i == SIZE_MAX || !dt->dirs[i].valid)
+	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return false;
 
 	size_t bNum = dt->dirs[i].firstBlockIdx;
@@ -152,15 +159,12 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	 * free' and set first free to point to the original start of this file
 	 */
 
-	printf("%ld", save);
-	//---
-
 	return true;
 }
 
 /**
- * @brief Delete a file or recursively, the contents of a directory. The 'name'
- * is freed.
+ * @brief Delete a file or recursively, the contents of a directory. The
+ * 'name' is freed.
  */
 bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
@@ -199,8 +203,8 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 /**
  * @brief serialises all the entries of a table to a buffer
  *
- * @details this should be called after the user has written other information
- * to the disk first
+ * @details this should be called after the user has written other
+ * information to the disk first
  *
  * @return idx of the buffer after filling it up
  */
@@ -225,9 +229,9 @@ size_t dump_dir_table_to_buf(char *buf, size_t idx, const fs_table *dt) {
 }
 
 /**
- * @details writes a directory table entry to a buffer's i'th index. It is the
- * caller's responsibility to ensure that the buffer is large enough to hold the
- * entry. The index is incremented accordingly.
+ * @details writes a directory table entry to a buffer's i'th index. It is
+ * the caller's responsibility to ensure that the buffer is large enough to
+ * hold the entry. The index is incremented accordingly.
  */
 void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
 	memcpy(b + *i, &e->valid, sizeof(bool));
@@ -246,21 +250,27 @@ void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
 	*i += sizeof(size_t);
 }
 
-void clear_out_fat(size_t nmb, fs_table *faT) {
+/**
+ * @param nmb number of metadata blocks
+ */
+void clear_out_fat(size_t nmb, fs_table *fat) {
 	/* zero out blocks holding metadata */
-	memset(faT->blocks, 0, nmb * sizeof(fat_entry));
+	memset(fat->blocks, 0, nmb * sizeof(fat_entry));
 
 	/* initialise the FAT as a free list */
-	for (size_t i = nmb; i < faT->size; i++)
-		faT->blocks[i] = (fat_entry){.used = 0, .next = i + 1};
+	for (size_t i = nmb; i < fat->size; i++)
+		fat->blocks[i] = (fat_entry){.used = 0, .next = i + 1};
 
-	/* any chain's final block points to SIZE_MAX */
-	faT->blocks[faT->size - 1].next = SIZE_MAX;
+	/* point the end of the free chain to SIZE_MAX */
+	fat->blocks[fat->size - 1].next = SIZE_MAX;
+
+	/* set the first free block */
+	firstFree = nmb;
 }
 
 /**
- * @brief creates a directory table in memory, populates it with the root entry
- * and garbage entries
+ * @brief creates a directory table in memory, populates it with the root
+ * entry and garbage entries
  */
 bool init_new_dir_t(int entryCount, fs_table *dt) {
 	dt->size = entryCount;
@@ -279,8 +289,8 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
 }
 
 /**
- * @brief allocates a new file allocation table having enough space for every
- * block in the filesystem
+ * @brief allocates a new file allocation table having enough space for
+ * every block in the filesystem
  *
  * @param nb number of blocks in the filesystem
  * @param nmb number of blocks used for metadata (i.e tables and other
@@ -300,10 +310,11 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
 }
 
 /**
- * @details creates a filesystem file as per the settings defined in `fss`, and
- * initialises the global directory/file allocation tables. If a filesystem
- * already exists before this function is called, the caller should perform all
- * relevant cleanup first, namely freeing the global structures.
+ * @details creates a filesystem file as per the settings defined in `fss`,
+ * and initialises the global directory/file allocation tables. If a
+ * filesystem already exists before this function is called, the caller
+ * should perform all relevant cleanup first, namely freeing the global
+ * structures.
  */
 bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	/* open file for writing */
@@ -320,8 +331,6 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 		free(dt->dirs);
 		goto fclose;
 	}
-
-	/* TODO: first free = numMetadataBlocks; */
 
 	/* write garbage blocks to disk */
 	char *buf = calloc(fss->blockSize, sizeof(char));
@@ -371,7 +380,7 @@ bool calc_and_validate_block_no(struct fs_settings *fss) {
 	if (fss->numMdBlocks > fss->numBlocks) {
 		fprintf(stderr,
 				"init_new_fs(): Configuration error - metadata size exceeds "
-				"available filesystem space. Please adjust "
+				"available filesystem space; please adjust "
 				"filesystem size, block size, "
 				"or directory entry count.\n");
 		return false;
@@ -381,8 +390,8 @@ bool calc_and_validate_block_no(struct fs_settings *fss) {
 }
 
 /**
- * @brief parse user args for filesystem creation. Unset or erroneous arguments
- * are defaulted.
+ * @brief parse user args for filesystem creation. Unset or erroneous
+ * arguments are defaulted.
  */
 bool load_config(struct fs_settings *fss, int argc, char **argv) {
 	int opt;
@@ -400,7 +409,7 @@ bool load_config(struct fs_settings *fss, int argc, char **argv) {
 			parse_and_set_ul(&fss->blockSize, optarg);
 			break;
 		case 'b':
-			parse_and_set_ul(&fss->fBlocks, optarg);
+			parse_and_set_ul(&fss->fMaxBlocks, optarg);
 			break;
 		default:
 			fprintf(stderr,

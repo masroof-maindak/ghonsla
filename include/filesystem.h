@@ -6,13 +6,17 @@
 
 #include "../include/bool.h"
 
+#define ERR_NO_AVAILABLE_BLOCKS                                                \
+	"write_to_file(): insufficient blocks available to complete write; "       \
+	"remove data and try again\n"
+
 struct fs_settings {
 	/* Configurable; determined via CLI args */
 
 	size_t size;	   /* filesystem size (in MBs) */
 	size_t entryCount; /* number of directory entries */
 	size_t blockSize;  /* size of one block */
-	size_t fBlocks;	   /* no. of blocks in one file */
+	size_t fMaxBlocks; /* max no. of blocks in one file */
 
 	/* Locked; determined at run-time based on the above */
 
@@ -51,7 +55,7 @@ bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat);
 
 /* partition management */
 bool init_new_dir_t(int entryCount, fs_table *dt);
-bool init_new_fat(size_t nb, size_t nmb, fs_table *faT);
+bool init_new_fat(size_t nb, size_t nmb, fs_table *fat);
 bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat);
 void clear_out_fat(size_t nmb, fs_table *faT);
 void quick_format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);

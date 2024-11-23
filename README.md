@@ -38,5 +38,5 @@ make
 - [ ] Encryption on-disk
 - [ ] Ncurses/Termbox2 TUI
     - [ ] Print filesystem settings on top/bottom row
-- [ ] Optimise disk writes
+- [ ] Optimise disk writes (buffered I/O)?
 - [ ] Multi-partition support?
