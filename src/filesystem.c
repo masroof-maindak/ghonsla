@@ -296,10 +296,7 @@ bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
 	}
 
 	free(dt->dirs[i].name);
-	dt->dirs[i].name  = "";
-	dt->dirs[i].valid = false;
-	dt->dirs[i].size  = 0;
-
+	dt->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
 	return true;
 }
 
@@ -367,16 +364,18 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 	if (e->nameLen == 0)
 		e->name = "";
 	else {
-		e->name = malloc(e->nameLen);
+		e->name = malloc(e->nameLen + 1);
 		printf("mallocing %hu bytes for %s\n", e->nameLen, b + *i);
 		if (e->name == NULL) {
 			perror("malloc() in obtain_dir_entry_from_buf()");
 			return false;
 		}
 		memcpy(e->name, b + *i, e->nameLen);
+		e->name[e->nameLen] = '\0';
+		printf("successfully set name: %s\n", e->name);
 	}
-	*i += e->nameLen;
 
+	*i += e->nameLen;
 	memcpy(&e->size, b + *i, sizeof(e->size));
 	*i += sizeof(e->size);
 	memcpy(&e->parentIdx, b + *i, sizeof(e->parentIdx));
