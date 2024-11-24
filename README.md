@@ -31,9 +31,9 @@ make
 	- [x] Truncate
 	- [x] Read
     - [ ] Insert?
-- [ ] Directory table/FAT Persistence
-    - [/] Serialise
-    - [ ] Deserialise
+- [x] Directory table/FAT Persistence
+    - [x] Serialise
+    - [x] Deserialise
 - [ ] Encryption on-disk
 - [ ] Ncurses/Termbox2 TUI
     - [ ] Print filesystem settings on top/bottom row

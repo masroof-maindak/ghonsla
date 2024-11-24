@@ -53,9 +53,13 @@ typedef struct {
 } fs_table;
 
 /* persistence */
-size_t dump_dir_table_to_buf(char *buf, size_t idx, const fs_table *dt);
-void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *s);
-bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat);
+bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
+						  fs_table *const fat);
+bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
+						const fs_table *const fat);
+bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
+							   size_t *const i);
+void write_dir_entry_to_buf(const dir_entry *const e, char *const b, size_t *i);
 
 /* partition management */
 bool init_new_dir_t(int entryCount, fs_table *dt);
@@ -76,8 +80,8 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat);
 int read_file_at(size_t i, char *const buf, size_t size,
 				 struct fs_settings *fss, size_t fp, const fs_table *dt,
 				 const fs_table *fat);
-int write_file_at(size_t i, const char *buf, size_t size,
-				  struct fs_settings *fss, size_t fp, const fs_table *dt,
+int write_to_file(size_t i, const char *buf, size_t size,
+				  const struct fs_settings *fss, size_t fp, const fs_table *dt,
 				  const fs_table *fat);
 int append_to_file(size_t i, const char *buf, size_t size,
 				   struct fs_settings *fss, const fs_table *dt,
@@ -87,7 +91,7 @@ int append_to_file(size_t i, const char *buf, size_t size,
 bool print_directory_contents(size_t i, fs_table *dt);
 
 /* fs_settings */
-bool load_config(struct fs_settings *fss, int argc, char **argv);
-bool calc_and_validate_block_num(struct fs_settings *fss);
+bool parse_config_args(struct fs_settings *fss, int argc, char **argv);
+bool compute_and_check_block_counts(struct fs_settings *const fss);
 
 #endif // FILESYSTEM_H

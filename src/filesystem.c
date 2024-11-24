@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -17,34 +16,6 @@ size_t freeListPtr; /* idx of first block in the free chain */
 		if (freeListPtr != SIZE_MAX)                                           \
 			freeListPtr = fat->blocks[freeListPtr].next;                       \
 	} while (0)
-
-/**
- * @brief creates or opens an existing filesystem file
- */
-bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat) {
-	if ((fs = fopen(FS_NAME, "r+")) == NULL) {
-		if (errno == ENOENT) {
-			/* doesn't exist */
-			return true;
-		} else {
-			perror("fopen() in init_fs()");
-			return false;
-		}
-	}
-
-	if (argc > 1)
-		printf("Disk file found, ignoring args\n");
-
-	/* TODO: load fat, dt, and user settings from disk */
-	//---
-	*fss	 = DEFAULT_CFG;
-	dt->size = fat->size = 0;
-	dt->dirs			 = NULL;
-	fat->blocks			 = NULL;
-	//---
-
-	return true;
-}
 
 /**
  * @brief gets the size of an entry in a directory table
@@ -77,7 +48,10 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd,
  * heap-allocated string.
  */
 bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
-	/* find free spot */
+	/* find free spot & and verify we don't exist already */
+	if (get_index_of_dir_entry(name, cwd, dt) != SIZE_MAX)
+		return false;
+
 	size_t i = 1;
 	for (; i < dt->size; i++)
 		if (!dt->dirs[i].valid)
@@ -172,8 +146,8 @@ int read_file_at(size_t i, char *const buf, size_t size,
  *
  * @return 0 on success, negative on failure
  */
-int write_file_at(size_t i, const char *buf, size_t size,
-				  struct fs_settings *fss, size_t fp, const fs_table *dt,
+int write_to_file(size_t i, const char *buf, size_t size,
+				  const struct fs_settings *fss, size_t fp, const fs_table *dt,
 				  const fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
@@ -252,7 +226,7 @@ int write_file_at(size_t i, const char *buf, size_t size,
 int append_to_file(size_t i, const char *buf, size_t size,
 				   struct fs_settings *fss, const fs_table *dt,
 				   const fs_table *fat) {
-	return write_file_at(i, buf, size, fss, dt->dirs[i].size, dt, fat);
+	return write_to_file(i, buf, size, fss, dt->dirs[i].size, dt, fat);
 }
 
 /**
@@ -337,6 +311,10 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
+	/* if an entry w/ that name already exists */
+	if (get_index_of_dir_entry(newName, dt->dirs[i].parentIdx, dt) != SIZE_MAX)
+		return false;
+
 	free(dt->dirs[i].name);
 	dt->dirs[i].name	= newName;
 	dt->dirs[i].nameLen = strlen(newName);
@@ -345,53 +323,143 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 }
 
 /**
- * @brief serialises all the entries of a table to a buffer
- *
- * @details this should be called after the user has written other
- * information to the disk first
- *
- * @return idx of the buffer after filling it up
+ * @brief writes all metadata to a buffer and then the filesystem
  */
-size_t dump_dir_table_to_buf(char *buf, size_t idx, const fs_table *dt) {
-	//--- TODO: abstract out
-	/* size_t cap = 0; */
-	/**/
-	/* for (size_t i = 0; i < dt->size; i++) */
-	/* 	cap += get_dte_len(&dt->u.dirTEntries[i]); */
-	/**/
-	/* char *buf = malloc(cap); */
-	/* if (buf == NULL) { */
-	/* 	perror("malloc() in dump_entries_to_buf()"); */
-	/* 	return 0; */
-	/* } */
-	//---
+bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
+						const fs_table *const fat) {
+	size_t size = 0;
+	char buf[fss->numMdBlocks * fss->blockSize];
+	memset(buf, 0, sizeof(buf));
 
+	/* filesystem settings */
+	memcpy(buf + size, fss, sizeof(struct fs_settings));
+	size += sizeof(struct fs_settings);
+
+	/* directory table */
 	for (size_t i = 0; i < dt->size; i++)
-		write_dir_entry_to_buf(&dt->dirs[i], buf, &idx);
+		write_dir_entry_to_buf(&dt->dirs[i], buf, &size);
 
-	return idx;
+	/* file allocation table */
+	memcpy(buf + size, fat->blocks, sizeof(fat_entry) * fat->size);
+	size += sizeof(fat_entry) * fat->size;
+
+	/* serialisation */
+	for (size_t i = 0; i < fss->numMdBlocks; size -= fss->blockSize, i++)
+		if (write_block(i, fss->blockSize, buf + (i * fss->blockSize)) < 0)
+			return false;
+
+	return true;
 }
 
 /**
- * @details writes a directory table entry to a buffer's i'th index. It is
- * the caller's responsibility to ensure that the buffer is large enough to
- * hold the entry. The index is incremented accordingly.
+ * @brief reads a buf at the i'th index to obtain a directory table entry,
+ * allocating space for names
  */
-void write_dir_entry_to_buf(const dir_entry *e, char *b, size_t *i) {
-	memcpy(b + *i, &e->valid, sizeof(bool));
-	*i += sizeof(bool);
-	memcpy(b + *i, &e->isDir, sizeof(bool));
-	*i += sizeof(bool);
-	memcpy(b + *i, &e->nameLen, sizeof(unsigned short));
-	*i += sizeof(unsigned short);
+bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
+							   size_t *const i) {
+	memcpy(&e->valid, b + *i, sizeof(e->valid));
+	*i += sizeof(e->valid);
+	memcpy(&e->isDir, b + *i, sizeof(e->isDir));
+	*i += sizeof(e->isDir);
+	memcpy(&e->nameLen, b + *i, sizeof(e->nameLen));
+	*i += sizeof(e->nameLen);
+
+	if (e->nameLen == 0)
+		e->name = "";
+	else {
+		e->name = malloc(e->nameLen);
+		printf("mallocing %hu bytes for %s\n", e->nameLen, b + *i);
+		if (e->name == NULL) {
+			perror("malloc() in obtain_dir_entry_from_buf()");
+			return false;
+		}
+		memcpy(e->name, b + *i, e->nameLen);
+	}
+	*i += e->nameLen;
+
+	memcpy(&e->size, b + *i, sizeof(e->size));
+	*i += sizeof(e->size);
+	memcpy(&e->parentIdx, b + *i, sizeof(e->parentIdx));
+	*i += sizeof(e->parentIdx);
+	memcpy(&e->firstBlockIdx, b + *i, sizeof(e->firstBlockIdx));
+	*i += sizeof(e->firstBlockIdx);
+
+	return true;
+}
+
+/**
+ * @brief recovers all metadata from the filesystem to the relevant structures
+ */
+bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
+						  fs_table *const fat) {
+
+	/* obtain settings */
+	size_t size = sizeof(struct fs_settings);
+	char tmp[BLOCK_SIZE];
+
+	if (read_block(0, BLOCK_SIZE, tmp) < 0)
+		return false;
+
+	memcpy(fss, tmp, size);
+
+	char buf[fss->numMdBlocks * fss->blockSize];
+	memset(buf, 0, sizeof(buf));
+
+	/* deserialise */
+	for (size_t i = 0; i < fss->numMdBlocks; i++)
+		if (read_block(i, fss->blockSize, buf + (i * fss->blockSize)) < 0)
+			return false;
+
+	/* directory table */
+	dt->size = fss->entryCount;
+	dt->dirs = malloc(sizeof(dir_entry) * dt->size);
+
+	if (dt->dirs == NULL) {
+		perror("malloc() in deserialise_metadata() - dt->dirs");
+		return false;
+	}
+
+	for (size_t i = 0; i < fss->entryCount; i++)
+		if (!obtain_dir_entry_from_buf(&dt->dirs[i], buf, &size))
+			return false;
+
+	/* file allocation table */
+	fat->size	= fss->numBlocks;
+	fat->blocks = malloc(fat->size * sizeof(fat_entry));
+
+	if (fat->blocks == NULL) {
+		free(dt->dirs);
+		perror("malloc() in deserialise_metadata() - fat->blocks");
+		return false;
+	}
+
+	memcpy(fat->blocks, buf + size, sizeof(fat_entry) * fat->size);
+
+	return true;
+}
+
+/**
+ * @details writes a directory table entry to a buffer's i'th index. The
+ * index is incremented accordingly.
+ *
+ * @pre the buffer is large enough to hold the entry
+ */
+void write_dir_entry_to_buf(const dir_entry *const e, char *const b,
+							size_t *i) {
+	memcpy(b + *i, &e->valid, sizeof(e->valid));
+	*i += sizeof(e->valid);
+	memcpy(b + *i, &e->isDir, sizeof(e->isDir));
+	*i += sizeof(e->isDir);
+	memcpy(b + *i, &e->nameLen, sizeof(e->nameLen));
+	*i += sizeof(e->nameLen);
 	memcpy(b + *i, e->name, e->nameLen);
 	*i += e->nameLen;
-	memcpy(b + *i, &e->size, sizeof(size_t));
-	*i += sizeof(size_t);
-	memcpy(b + *i, &e->parentIdx, sizeof(size_t));
-	*i += sizeof(size_t);
-	memcpy(b + *i, &e->firstBlockIdx, sizeof(size_t));
-	*i += sizeof(size_t);
+	memcpy(b + *i, &e->size, sizeof(e->size));
+	*i += sizeof(e->size);
+	memcpy(b + *i, &e->parentIdx, sizeof(e->parentIdx));
+	*i += sizeof(e->parentIdx);
+	memcpy(b + *i, &e->firstBlockIdx, sizeof(e->firstBlockIdx));
+	*i += sizeof(e->firstBlockIdx);
 }
 
 /**
@@ -464,7 +532,7 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
 bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	/* open file for writing */
 	if ((fs = fopen(FS_NAME, "w+")) == NULL) {
-		perror("fopen() in create_empty_fs()");
+		perror("fopen() in init_new_fs()");
 		return false;
 	}
 
@@ -480,7 +548,7 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	/* write garbage blocks to disk */
 	char *buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
-		perror("calloc() in create_empty_fs()");
+		perror("calloc() in init_new_fs()");
 		free(dt->dirs);
 		free(fat->blocks);
 		goto fclose;
@@ -488,7 +556,7 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 
 	for (size_t i = 0; i < fss->numBlocks; i++) {
 		if (write_block(i, fss->blockSize, buf) != 0) {
-			fprintf(stderr, "create_empty_fs(): failed at block #%zd\n", i);
+			fprintf(stderr, "init_new_fs(): failed at block #%zd\n", i);
 			free(dt->dirs);
 			free(fat->blocks);
 			free(buf);
@@ -501,7 +569,7 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 
 fclose:
 	if (fclose(fs) == EOF)
-		perror("fclose() in create_empty_fs()");
+		perror("fclose() in init_new_fs()");
 	return false;
 }
 
@@ -514,13 +582,18 @@ void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	clear_out_fat(fss->numMdBlocks, fat);
 }
 
-bool calc_and_validate_block_num(struct fs_settings *fss) {
+/**
+ * @brief determines the number of blocks and metadata blocks from other
+ * provided information and updates the settings accordingly
+ */
+bool compute_and_check_block_counts(struct fs_settings *const fss) {
 	fss->numBlocks = fss->size * 1024 * 1024 / fss->blockSize;
 
 	const size_t dirTBytes = MAX_SIZE_DIR_ENTRY * fss->entryCount,
-				 fatBytes  = sizeof(fat_entry) * fss->numBlocks;
+				 fatBytes  = sizeof(fat_entry) * fss->numBlocks,
+				 stBytes   = sizeof(struct fs_settings);
 
-	fss->numMdBlocks = ((fatBytes + dirTBytes) / fss->blockSize) + 1;
+	fss->numMdBlocks = ((fatBytes + dirTBytes + stBytes) / fss->blockSize) + 1;
 
 	if (fss->numMdBlocks > fss->numBlocks) {
 		fprintf(stderr,
@@ -538,7 +611,7 @@ bool calc_and_validate_block_num(struct fs_settings *fss) {
  * @brief parse user args for filesystem creation. Unset or erroneous
  * arguments are defaulted.
  */
-bool load_config(struct fs_settings *fss, int argc, char **argv) {
+bool parse_config_args(struct fs_settings *fss, int argc, char **argv) {
 	int opt;
 	*fss = DEFAULT_CFG;
 
@@ -572,7 +645,7 @@ bool load_config(struct fs_settings *fss, int argc, char **argv) {
 		printf("\n");
 	}
 
-	if (!calc_and_validate_block_num(fss))
+	if (!compute_and_check_block_counts(fss))
 		return false;
 
 	return true;

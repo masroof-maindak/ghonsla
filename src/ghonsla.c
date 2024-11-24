@@ -1,26 +1,31 @@
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "../include/defaults.h"
 #include "../include/ghonsla.h"
 #include "../include/utils.h"
 
 FILE *fs = NULL;
 
 int main(int argc, char **argv) {
-	int ret		 = 0;
-	fs_table dt	 = {.size = 0, .dirs = NULL};
-	fs_table fat = {.size = 0, .blocks = NULL};
-	struct fs_settings fss;
+	int ret				   = 0;
+	fs_table dt			   = {.size = 0, .dirs = NULL};
+	fs_table fat		   = {.size = 0, .blocks = NULL};
+	struct fs_settings fss = DEFAULT_CFG;
 
-	if (!init(&fss, argc, argv, &dt, &fat))
+	if (!init_fs(&fss, argc, argv, &dt, &fat))
 		return 1;
 
 	/* TODO: ncurses menu loop */
 
-	tests(&fss, &dt, &fat);
-
 	/* cleanup: */
+	format_fs(&fss, &dt, &fat);
+
+	printf("/:\n");
+	print_directory_contents(ROOT_IDX, &dt);
+
 	if (fclose(fs) == EOF)
 		perror("fclose() in main()");
 	free(dt.dirs);
@@ -31,23 +36,58 @@ int main(int argc, char **argv) {
 /**
  * @details opens the filesystem file if it exists, or creates a new one if not
  */
-bool init(struct fs_settings *fss, int argc, char **argv, fs_table *dt,
-		  fs_table *fat) {
-	switch (open_fs(fss, argc, dt, fat)) {
-	case 0: /* failed to open file */
+bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
+			 fs_table *const fat) {
+
+	/* couldn't open */
+	if ((fs = fopen(FS_NAME, "r+")) == NULL && errno != ENOENT) {
+		perror("fopen() in init_fs()");
 		return false;
-	case 1: /* file not present */
-		if (!load_config(fss, argc, argv) || !init_new_fs(fss, dt, fat))
-			return false;
-		break;
-	case 2: /* file present and loaded */
-		break;
 	}
+
+	/* generate */
+	if (errno == ENOENT) {
+		if (!parse_config_args(fss, argc, argv) || !init_new_fs(fss, dt, fat))
+			return false;
+		tests_generate(fss, dt, fat); // TODO: COMMENT OUT
+		return true;
+	}
+
+	/* open and reload */
+	if (argc > 1)
+		printf("Disk file found, ignoring args\n");
+
+	// TODO: COMBINE WITH FINAL RETURN AFTER FIXING
+	if (!deserialise_metadata(fss, dt, fat))
+		return false;
+
+	tests_deserialise(dt);
 
 	return true;
 }
 
-void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
+void tests_deserialise(fs_table *const dt) {
+	char *firstDir	= "firstDir";
+	char *secondDir = "secondDir";
+	size_t idx		= ROOT_IDX;
+
+	printf("firstDir:\n");
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	print_directory_contents(idx, dt);
+	puts("");
+
+	idx = get_index_of_dir_entry(secondDir, 1, dt);
+	printf("secondDir:\n");
+	print_directory_contents(idx, dt);
+	puts("");
+
+	printf("/:\n");
+	print_directory_contents(ROOT_IDX, dt);
+	puts("");
+}
+
+void tests_generate(struct fs_settings *const fss, fs_table *const dt,
+					fs_table *const fat) {
 	char *firstDir	= copy_string("firstDir");
 	char *f1name	= copy_string("f1");
 	char *f2name	= copy_string("f2");
@@ -69,7 +109,7 @@ void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	idx = get_index_of_dir_entry(f2name, 1, dt);
 	rename_dir_entry(rename, idx, dt);
 
-	printf("firstDir\n");
+	printf("firstDir:\n");
 	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
 	print_directory_contents(idx, dt);
 	create_dir_entry(secondDir, 1, true, dt);
@@ -77,11 +117,11 @@ void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 
 	idx = get_index_of_dir_entry(secondDir, 1, dt);
 	create_dir_entry(f4name, idx, false, dt);
-	printf("secondDir\n");
+	printf("secondDir:\n");
 	print_directory_contents(idx, dt);
 	puts("");
 
-	printf("firstDir\n");
+	printf("firstDir:\n");
 	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
 	print_directory_contents(idx, dt);
 	puts("");
@@ -97,27 +137,22 @@ void tests(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	char s3[]	= "overwritten";
 	int w1 = 1020, w2 = 1024;
 	char str1[w1], str2[w2];
+	memset(str1, '_', w1);
 	int x;
-	for (int j = 0; j < w1; j++)
-		str1[j] = 2 + (rand() % 250);
-
-	if ((x = write_file_at(idx, str1, w1, fss, 0, dt, fat)) < 0)
+	if ((x = write_to_file(idx, str1, w1, fss, 0, dt, fat)) < 0)
 		printf("write #1 %d\n", x);
-	if ((x = write_file_at(idx, s1, strlen(s1), fss, 0, dt, fat)) < 0)
+	if ((x = write_to_file(idx, s1, strlen(s1), fss, 0, dt, fat)) < 0)
 		printf("write #2 %d\n", x);
 	if ((x = append_to_file(idx, s2, strlen(s2), fss, dt, fat)) < 0)
 		printf("write #3 %d\n", x);
-	if ((x = write_file_at(idx, s3, strlen(s3), fss, 5, dt, fat)) < 0)
+	if ((x = write_to_file(idx, s3, strlen(s3), fss, 5, dt, fat)) < 0)
 		printf("write #4 %d\n", x);
 	if ((x = read_file_at(idx, str2, w2, fss, 0, dt, fat)) < 0)
 		printf("read #1 %d\n", x);
 	if ((x = read_file_at(idx, str2, w2, fss, 3, dt, fat)) < 0)
 		printf("read #2 %d\n", x);
 
-	format_fs(fss, dt, fat);
-
-	printf("/:\n");
-	print_directory_contents(ROOT_IDX, dt);
+	serialise_metadata(fss, dt, fat);
 
 	/* free(firstDir); */
 	/* free(f3name); */

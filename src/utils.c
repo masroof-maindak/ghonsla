@@ -68,7 +68,7 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	return 0;
 }
 
-int write_block(size_t blockNo, size_t blockSize, char *buf) {
+int write_block(size_t blockNo, size_t blockSize, const char *buf) {
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
 		perror("fseek() in write_block()");

@@ -27,6 +27,6 @@ char *double_if_Of(char *buf, size_t idx, size_t add, size_t *size);
 void parse_and_set_ul(unsigned long *dst, char *src);
 
 int read_block(size_t blockNo, size_t blockSize, char *buf);
-int write_block(size_t blockNo, size_t blockSize, char *buf);
+int write_block(size_t blockNo, size_t blockSize, const char *buf);
 
 #endif // UTILS_H
