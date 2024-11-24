@@ -8,6 +8,8 @@
 #include "../include/utils.h"
 
 extern FILE *fs;
+extern char* optarg;
+extern int optind;
 
 size_t freeListPtr; /* idx of first block in the free chain */
 #define INCREMENT_FREE_LIST_PTR                                                \
