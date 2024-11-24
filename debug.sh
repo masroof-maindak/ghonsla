@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-bp="write_to_file"
+bp="filesystem.c:112"
 bin="./ghonsla"
 
 rm disk.fs

@@ -29,7 +29,7 @@ make
 	- [x] Rename
 	- [x] Write
 	- [x] Truncate
-	- [x] Read (testing)
+	- [x] Read
     - [ ] Insert?
 - [ ] Directory table/FAT Persistence
     - [/] Serialise

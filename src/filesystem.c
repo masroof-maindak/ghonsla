@@ -8,7 +8,7 @@
 #include "../include/utils.h"
 
 extern FILE *fs;
-extern char* optarg;
+extern char *optarg;
 extern int optind;
 
 size_t freeListPtr; /* idx of first block in the free chain */
