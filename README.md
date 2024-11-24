@@ -23,13 +23,13 @@ make
         - [x] Parametrisation
         - [x] User input
 	- [x] Format
-- [ ] Files
+- [x] Files
 	- [x] Create
 	- [x] Delete
 	- [x] Rename
 	- [x] Write
 	- [x] Truncate
-	- [ ] Read
+	- [x] Read (testing)
     - [ ] Insert?
 - [ ] Directory table/FAT Persistence
     - [/] Serialise
