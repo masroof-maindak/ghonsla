@@ -98,6 +98,60 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
 }
 
 /**
+ * @details read the contents of a file into a buffer, starting from a specified
+ * index, and running till a specific length
+ *
+ * @pre buf has 'size' bytes
+ *
+ * @param fp start reading at this index
+ * @param size read this many bytes
+ */
+int read_file_at(size_t i, char *const buf, size_t size,
+				 struct fs_settings *fss, size_t fp, const fs_table *dt,
+				 const fs_table *fat) {
+	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
+		return -1;
+
+	if (fp + size > dt->dirs[i].size)
+		return -2;
+
+	if (buf == NULL)
+		return 0;
+
+	size_t bIdx = dt->dirs[i].firstBlockIdx;
+
+	while (fp > fss->blockSize) {
+		fp -= fss->blockSize;
+		bIdx = fat->blocks[bIdx].next;
+	}
+
+	char bData[fss->blockSize];
+	size_t written = 0;
+
+	while (size > 0) {
+		if (read_block(bIdx, fss->blockSize, bData) != 0)
+			return -3;
+
+		int bytesCopied = MIN(fss->blockSize - fp, size);
+		memcpy(buf + written, bData + fp, bytesCopied);
+
+		fp = 0;
+		size -= bytesCopied;
+		written += bytesCopied;
+
+		if (size > 0) {
+			bIdx = fat->blocks[bIdx].next;
+			if (bIdx == SIZE_MAX) {
+				fprintf(stderr, "read_file_at(): unexpected EoF reached");
+				return -4;
+			}
+		}
+	}
+
+	return 0;
+}
+
+/**
  * @brief writes a buf of data to a file, at the specified file index, ensuring
  * the updation of all relevant metadata accordingly
  *
@@ -116,7 +170,7 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
  *
  * @return 0 on success, negative on failure
  */
-int write_to_file(size_t i, const char *buf, size_t size,
+int write_file_at(size_t i, const char *buf, size_t size,
 				  struct fs_settings *fss, size_t fp, const fs_table *dt,
 				  const fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
@@ -168,8 +222,11 @@ int write_to_file(size_t i, const char *buf, size_t size,
 		size -= bytesCopied;
 		buf += bytesCopied;
 
-		if (fat->blocks[bIdx].next == SIZE_MAX &&
-			size > (fss->blockSize - fat->blocks[bIdx].used)) {
+		if (size > 0) {
+			if (fat->blocks[bIdx].next != SIZE_MAX) {
+				bIdx = fat->blocks[bIdx].next;
+				continue;
+			}
 
 			if (dt->dirs[bIdx].size / fss->blockSize > fss->fMaxBlocks) {
 				fprintf(stderr, ERR_FILE_MAX_BLOCKS, fss->fMaxBlocks);
@@ -193,7 +250,7 @@ int write_to_file(size_t i, const char *buf, size_t size,
 int append_to_file(size_t i, const char *buf, size_t size,
 				   struct fs_settings *fss, const fs_table *dt,
 				   const fs_table *fat) {
-	return write_to_file(i, buf, size, fss, dt->dirs[i].size, dt, fat);
+	return write_file_at(i, buf, size, fss, dt->dirs[i].size, dt, fat);
 }
 
 /**

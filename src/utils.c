@@ -50,7 +50,7 @@ char *copy_string(const char *str) {
 int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() #1 in read_block()");
+		perror("fseek() in read_block()");
 		return -1;
 	}
 
