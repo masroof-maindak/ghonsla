@@ -9,11 +9,11 @@
 
 extern FILE *fs;
 
-size_t firstFree; // idx of first block in the 'freeList'
-#define INCREMENT_FIRST_FREE                                                   \
+size_t freeListPtr; /* idx of first block in the free chain */
+#define INCREMENT_FREE_LIST_PTR                                                \
 	do {                                                                       \
-		if (firstFree != SIZE_MAX)                                             \
-			firstFree = fat->blocks[firstFree].next;                           \
+		if (freeListPtr != SIZE_MAX)                                           \
+			freeListPtr = fat->blocks[freeListPtr].next;                       \
 	} while (0)
 
 /**
@@ -34,6 +34,7 @@ bool open_fs(struct fs_settings *fss, int argc, fs_table *dt, fs_table *fat) {
 		printf("Disk file found, ignoring args\n");
 
 	/* TODO: load fat, dt, and user settings from disk */
+	//---
 	*fss	 = DEFAULT_CFG;
 	dt->size = fat->size = 0;
 	dt->dirs			 = NULL;
@@ -51,11 +52,9 @@ int get_dte_len(const dir_entry *dte) {
 }
 
 /**
- * @brief return the index of an entry in the global directory table
+ * @brief return the index of an entry in a directory table
  *
  * @return SIZE_MAX if the name being searched for was not found
- *
- * @param dt directory table
  */
 size_t get_index_of_dir_entry(const char *name, size_t cwd,
 							  const fs_table *dt) {
@@ -74,8 +73,6 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd,
  * @brief creates a new file or directory under the parent directory at
  * `cwd` index, if a free entry is found. `name` must point to a
  * heap-allocated string.
- *
- * @param dt directory table
  */
 bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
 	/* find free spot */
@@ -101,6 +98,18 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
 }
 
 /**
+ * @brief writes a buf of data to a file, at the specified file index, ensuring
+ * the updation of all relevant metadata accordingly
+ *
+ * @details After validation and setting up (i.e variables & firstBlockIdx if
+ * need be), we loop until the entire buffer has been written to the file.
+ * 	1. Read block
+ * 	2. Update block
+ * 	3. Write back
+ * 	4. Update size/usage
+ * 	5. Update write index & remaining bytes
+ * 	6. Update block chain & possibly freeListPtr
+ *
  * @param i file's index in the directory table
  * @param size the size of the buffer
  * @param fp the position of the file at which to start writing
@@ -116,71 +125,75 @@ int write_to_file(size_t i, const char *buf, size_t size,
 	if (fp > dt->dirs[i].size)
 		return -2;
 
+	if (buf == NULL || size == 0)
+		return 0;
+
 	size_t bIdx = dt->dirs[i].firstBlockIdx;
+
 	while (fp > fss->blockSize) {
 		fp -= fss->blockSize;
 		bIdx = fat->blocks[bIdx].next;
 	}
 
-	/*
-	 * Now;
-	 * 	bIdx = block where we start writing
-	 * 	fp = index to start writing from inside this block
-	 */
-
 	if (bIdx == SIZE_MAX) { /* file is empty */
-		bIdx = dt->dirs[i].firstBlockIdx = firstFree;
-		INCREMENT_FIRST_FREE;
-	}
+		if (freeListPtr == SIZE_MAX) {
+			fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
+			return -3;
+		}
 
-	if (bIdx == SIZE_MAX) { /* no free block found */
-		fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
-		return -3;
+		bIdx = dt->dirs[i].firstBlockIdx = freeListPtr;
+		INCREMENT_FREE_LIST_PTR;
+		fat->blocks[bIdx].next = SIZE_MAX;
 	}
 
 	char bData[fss->blockSize];
+
 	while (size > 0) {
-		/* pick up */
 		if (read_block(bIdx, fss->blockSize, bData) != 0)
 			return -4;
 
-		/* overwrite */
-		/* CHECK: off by one? */
 		int bytesCopied = MIN(fss->blockSize - fp, size);
 		memcpy(bData + fp, buf, bytesCopied);
 
-		/* update space consumed */
-		size_t newUsage = fp + bytesCopied;
-		if (newUsage > fat->blocks[bIdx].used) {
-			dt->dirs[i].size += newUsage;
-			fat->blocks[bIdx].used = newUsage;
-		}
-
-		/* write back */
 		if (write_block(bIdx, fss->blockSize, bData) != 0)
 			return -5;
 
-		/* adjust write index & remainder */
+		size_t newUsage = fp + bytesCopied;
+		if (newUsage > fat->blocks[bIdx].used) {
+			dt->dirs[i].size += (newUsage - fat->blocks[bIdx].used);
+			fat->blocks[bIdx].used = newUsage;
+		}
+
 		fp = 0;
 		size -= bytesCopied;
+		buf += bytesCopied;
 
-		/* if this block is the last in the chain and there's more to write */
-		if (fat->blocks[bIdx].next == SIZE_MAX && size > 0) {
-			/* try to get a new block */
-			if (firstFree == SIZE_MAX) {
-				/* if there is none, leave */
-				fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
-				return -3;
+		if (fat->blocks[bIdx].next == SIZE_MAX &&
+			size > (fss->blockSize - fat->blocks[bIdx].used)) {
+
+			if (dt->dirs[bIdx].size / fss->blockSize > fss->fMaxBlocks) {
+				fprintf(stderr, ERR_FILE_MAX_BLOCKS, fss->fMaxBlocks);
+				return -6;
 			}
 
-			/* else, acquire it and update the curr block */
-			bIdx = fat->blocks[bIdx].next = firstFree;
-			INCREMENT_FIRST_FREE;
+			if (freeListPtr == SIZE_MAX) {
+				fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
+				return -7;
+			}
+
+			bIdx = fat->blocks[bIdx].next = freeListPtr;
+			INCREMENT_FREE_LIST_PTR;
 			fat->blocks[bIdx].next = SIZE_MAX;
 		}
 	}
 
 	return 0;
+}
+
+int append_to_file(size_t i, const char *buf, size_t size,
+				   struct fs_settings *fss, const fs_table *dt,
+				   const fs_table *fat) {
+	return write_to_file(i, buf, size, fss, dt->dirs[i].size, dt, fat);
 }
 
 /**
@@ -200,8 +213,11 @@ bool print_directory_contents(size_t i, fs_table *dt) {
 
 /**
  * @brief remove the entire contents of a file, i.e make them 'available' for
- * other files' writes. Note that the final block of a file's content
- * chain has it's 'next' set to SIZE_MAX.
+ * other files' writes.
+ *
+ * @pre if a file is empty, it's 'firstBlockIdx' is SIZE_MAX.
+ * @pre the final block of a file's content chain has it's 'next' set to
+ * SIZE_MAX.
  */
 bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
@@ -211,9 +227,9 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 		return true;
 
 	size_t bIdx = dt->dirs[i].firstBlockIdx;
+	size_t prev = bIdx;
 
 	/* traverse the file's chain until we reach the final block */
-	size_t prev = bIdx;
 	while (bIdx != SIZE_MAX) {
 		fat->blocks[bIdx].used = 0;
 		prev				   = bIdx;
@@ -222,10 +238,10 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	bIdx = prev;
 
 	/* Point the end of this file's chain towards the free list */
-	fat->blocks[bIdx].next = firstFree;
+	fat->blocks[bIdx].next = freeListPtr;
 
 	/* Set the start of this (now empty) chain as the free list */
-	firstFree = dt->dirs[i].firstBlockIdx;
+	freeListPtr = dt->dirs[i].firstBlockIdx;
 
 	return true;
 }
@@ -333,9 +349,9 @@ void clear_out_fat(size_t nmb, fs_table *fat) {
 	/* point the end of the free chain to SIZE_MAX */
 	fat->blocks[fat->size - 1].next = SIZE_MAX;
 
-	/* set the first free block */
+	/* initialise free chain */
 	/* CHECK: off by one? */
-	firstFree = nmb;
+	freeListPtr = nmb;
 }
 
 /**
@@ -412,16 +428,8 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	}
 
 	for (size_t i = 0; i < fss->numBlocks; i++) {
-		if (i == 100) {
-			char s[512];
-			for (int j = 0; j < 512; j++)
-				s[j] = 1 + (rand() % 255);
-			write_block(i, fss->blockSize, s);
-			continue;
-			fat->blocks[i].used = 512;
-		}
 		if (write_block(i, fss->blockSize, buf) != 0) {
-			fprintf(stderr, "create_empty_fs(): failed at block #%ld\n", i);
+			fprintf(stderr, "create_empty_fs(): failed at block #%zd\n", i);
 			free(dt->dirs);
 			free(fat->blocks);
 			free(buf);
@@ -441,13 +449,13 @@ fclose:
 /**
  * @brief: resets state-relevant tables to make them available to write over
  */
-void quick_format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
+void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	for (size_t i = 1; i < dt->size; i++)
 		remove_dir_entry(i, dt, fat);
 	clear_out_fat(fss->numMdBlocks, fat);
 }
 
-bool calc_and_validate_block_no(struct fs_settings *fss) {
+bool calc_and_validate_block_num(struct fs_settings *fss) {
 	fss->numBlocks = fss->size * 1024 * 1024 / fss->blockSize;
 
 	const size_t dirTBytes = MAX_SIZE_DIR_ENTRY * fss->entryCount,
@@ -505,7 +513,7 @@ bool load_config(struct fs_settings *fss, int argc, char **argv) {
 		printf("\n");
 	}
 
-	if (!calc_and_validate_block_no(fss))
+	if (!calc_and_validate_block_num(fss))
 		return false;
 
 	return true;

@@ -27,8 +27,8 @@ make
 	- [x] Create
 	- [x] Delete
 	- [x] Rename
-	- [x] Write (debugging)
-	- [x] Truncate (debugging)
+	- [x] Write
+	- [x] Truncate
 	- [ ] Read
     - [ ] Insert?
 - [ ] Directory table/FAT Persistence

@@ -10,6 +10,10 @@
 	"write_to_file(): insufficient blocks available to complete write; "       \
 	"remove data and try again\n"
 
+#define ERR_FILE_MAX_BLOCKS                                                    \
+	"write_to_file(): file has reached the maximum allowable number of "       \
+	"blocks (%zd)\n"
+
 struct fs_settings {
 	/* Configurable; determined via CLI args */
 
@@ -58,7 +62,7 @@ bool init_new_dir_t(int entryCount, fs_table *dt);
 bool init_new_fat(size_t nb, size_t nmb, fs_table *fat);
 bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat);
 void clear_out_fat(size_t nmb, fs_table *faT);
-void quick_format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);
+void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);
 
 /* directory-table generic */
 int get_size_of_dir_entry(const dir_entry *dte);
@@ -72,12 +76,15 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat);
 int write_to_file(size_t i, const char *buf, size_t size,
 				  struct fs_settings *fss, size_t fp, const fs_table *dt,
 				  const fs_table *fat);
+int append_to_file(size_t i, const char *buf, size_t size,
+				   struct fs_settings *fss, const fs_table *dt,
+				   const fs_table *fat);
 
 /* directory-specific */
 bool print_directory_contents(size_t i, fs_table *dt);
 
 /* fs_settings */
 bool load_config(struct fs_settings *fss, int argc, char **argv);
-bool calc_and_validate_block_no(struct fs_settings *fss);
+bool calc_and_validate_block_num(struct fs_settings *fss);
 
 #endif // FILESYSTEM_H
