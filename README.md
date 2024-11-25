@@ -32,7 +32,7 @@ make
 - [x] Directory table/FAT Persistence
     - [x] Serialise
     - [x] Deserialise
-- [ ] Ncurses/Termbox2 TUI
+- [ ] Termbox2 TUI
     - [ ] Print filesystem settings on top/bottom row?
 - [ ] Encryption on-disk
 - [ ] Optimise disk writes (buffered I/O)?

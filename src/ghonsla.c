@@ -6,6 +6,7 @@
 #include "../include/defaults.h"
 #include "../include/ghonsla.h"
 #include "../include/utils.h"
+#include "../lib/termbox2/termbox2.h"
 
 FILE *fs = NULL;
 
@@ -18,9 +19,15 @@ int main(int argc, char **argv) {
 	if (!init_fs(&fss, argc, argv, &dt, &fat))
 		return 1;
 
-	/* TODO: ncurses menu loop */
+	/* TODO: tb2 menu loop */
+	struct tb_event ev;
+	tb_init();
+	tb_poll_event(&ev);
+	tb_shutdown();
+	/* ------------------- */
 
 	/* cleanup: */
+	serialise_metadata(&fss, &dt, &fat);
 	format_fs(&fss, &dt, &fat);
 
 	printf("/:\n");
@@ -153,6 +160,4 @@ void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 		printf("read #1 %d\n", x);
 	if ((x = read_file_at(idx, str2, w2, fss, 3, dt, fat)) < 0)
 		printf("read #2 %d\n", x);
-
-	serialise_metadata(fss, dt, fat);
 }
