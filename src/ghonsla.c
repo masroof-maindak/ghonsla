@@ -49,7 +49,7 @@ bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
 	if (errno == ENOENT) {
 		if (!parse_config_args(fss, argc, argv) || !init_new_fs(fss, dt, fat))
 			return false;
-		tests_generate(fss, dt, fat); // TODO: COMMENT OUT
+		/* tests_generate(fss, dt, fat); */
 		return true;
 	}
 
@@ -57,29 +57,29 @@ bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
 	if (argc > 1)
 		printf("Disk file found, ignoring args\n");
 
-	// TODO: COMBINE WITH FINAL RETURN AFTER FIXING
-	if (!deserialise_metadata(fss, dt, fat))
-		return false;
+	return deserialise_metadata(fss, dt, fat);
+	/* if (!deserialise_metadata(fss, dt, fat)) */
+	/* 	return false; */
 
-	tests_deserialise(dt);
+	/* tests_deserialise(dt); */
 
-	return true;
+	/* return true; */
 }
 
 void tests_deserialise(fs_table *const dt) {
-	char *firstDir = "firstDir";
-	/* char *secondDir = "secondDir"; */
-	size_t idx = ROOT_IDX;
+	char *firstDir	= "firstDir";
+	char *secondDir = "secondDir";
+	size_t idx		= ROOT_IDX;
 
 	printf("firstDir:\n");
 	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
 	print_directory_contents(idx, dt);
 	puts("");
 
-	/* idx = get_index_of_dir_entry(secondDir, 1, dt); */
-	/* printf("secondDir:\n"); */
-	/* print_directory_contents(idx, dt); */
-	/* puts(""); */
+	idx = get_index_of_dir_entry(secondDir, 1, dt);
+	printf("secondDir:\n");
+	print_directory_contents(idx, dt);
+	puts("");
 
 	printf("/:\n");
 	print_directory_contents(ROOT_IDX, dt);
@@ -88,69 +88,71 @@ void tests_deserialise(fs_table *const dt) {
 
 void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 					fs_table *const fat) {
-	char *firstDir = copy_string("firstDir");
-	char *f1name   = copy_string("f1");
-	/* char *f2name = copy_string("f2"); */
-	/* char *f3name	= copy_string("f3"); */
-	/* char *rename	= copy_string("f2_renamed"); */
-	/* char *secondDir = copy_string("secondDir"); */
-	/* char *f4name	= copy_string("f4"); */
-	size_t idx = ROOT_IDX;
+	char *firstDir	= copy_string("firstDir");
+	char *f1name	= copy_string("f1");
+	char *f2name	= copy_string("f2");
+	char *f3name	= copy_string("f3");
+	char *rename	= copy_string("f2_renamed");
+	char *secondDir = copy_string("secondDir");
+	char *f4name	= copy_string("f4");
+	size_t idx		= ROOT_IDX;
 
 	create_dir_entry(firstDir, ROOT_IDX, true, dt);
 	create_dir_entry(f1name, ROOT_IDX, false, dt);
 
 	idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
 	remove_dir_entry(idx, dt, fat);
+	f1name = NULL;
 
-	/* create_dir_entry(f2name, 1, false, dt); */
-	/* create_dir_entry(f3name, 1, false, dt); */
+	create_dir_entry(f2name, 1, false, dt);
+	create_dir_entry(f3name, 1, false, dt);
 
-	/* idx = get_index_of_dir_entry(f2name, 1, dt); */
-	/* rename_dir_entry(rename, idx, dt); */
+	idx = get_index_of_dir_entry(f2name, 1, dt);
+	rename_dir_entry(rename, idx, dt);
+	f2name = NULL;
 
 	printf("firstDir:\n");
 	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
 	print_directory_contents(idx, dt);
-	/* create_dir_entry(secondDir, 1, true, dt); */
+	create_dir_entry(secondDir, 1, true, dt);
 	puts("");
 
-	/* idx = get_index_of_dir_entry(secondDir, 1, dt); */
-	/* create_dir_entry(f4name, idx, false, dt); */
-	/* printf("secondDir:\n"); */
-	/* print_directory_contents(idx, dt); */
-	/* puts(""); */
+	idx = get_index_of_dir_entry(secondDir, 1, dt);
+	create_dir_entry(f4name, idx, false, dt);
+	printf("secondDir:\n");
+	print_directory_contents(idx, dt);
+	puts("");
 
-	/* printf("firstDir:\n"); */
-	/* idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt); */
-	/* print_directory_contents(idx, dt); */
-	/* puts(""); */
+	printf("firstDir:\n");
+	idx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	print_directory_contents(idx, dt);
+	puts("");
 
 	printf("/:\n");
 	print_directory_contents(ROOT_IDX, dt);
 	puts("");
 
-	/* size_t pidx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt); */
-	/* idx			= get_index_of_dir_entry(f2name, pidx, dt); */
-	/* char s1[]	= "I am writing some text!"; */
-	/* char s2[]	= "I am writing some more text!"; */
-	/* char s3[]	= "overwritten"; */
-	/* int w1 = 1020, w2 = 1024; */
-	/* char str1[w1], str2[w2]; */
-	/* memset(str1, '_', w1); */
-	/* int x; */
-	/* if ((x = write_to_file(idx, str1, w1, fss, 0, dt, fat)) < 0) */
-	/* 	printf("write #1 %d\n", x); */
-	/* if ((x = write_to_file(idx, s1, strlen(s1), fss, 0, dt, fat)) < 0) */
-	/* 	printf("write #2 %d\n", x); */
-	/* if ((x = append_to_file(idx, s2, strlen(s2), fss, dt, fat)) < 0) */
-	/* 	printf("write #3 %d\n", x); */
-	/* if ((x = write_to_file(idx, s3, strlen(s3), fss, 5, dt, fat)) < 0) */
-	/* 	printf("write #4 %d\n", x); */
-	/* if ((x = read_file_at(idx, str2, w2, fss, 0, dt, fat)) < 0) */
-	/* 	printf("read #1 %d\n", x); */
-	/* if ((x = read_file_at(idx, str2, w2, fss, 3, dt, fat)) < 0) */
-	/* 	printf("read #2 %d\n", x); */
+	size_t pidx = get_index_of_dir_entry(firstDir, ROOT_IDX, dt);
+	idx			= get_index_of_dir_entry(f3name, pidx, dt);
+	char s1[]	= "I am writing some text!";
+	char s2[]	= "I am writing some more text!";
+	char s3[]	= "overwritten";
+	int w1 = 1020, w2 = 1024;
+	char str1[w1], str2[w2];
+	memset(str1, '_', w1);
+	int x;
+	if ((x = write_to_file(idx, str1, w1, fss, 0, dt, fat)) < 0)
+		printf("write #1 %d\n", x);
+	if ((x = write_to_file(idx, s1, strlen(s1), fss, 0, dt, fat)) < 0)
+		printf("write #2 %d\n", x);
+	if ((x = append_to_file(idx, s2, strlen(s2), fss, dt, fat)) < 0)
+		printf("write #3 %d\n", x);
+	if ((x = write_to_file(idx, s3, strlen(s3), fss, 5, dt, fat)) < 0)
+		printf("write #4 %d\n", x);
+	if ((x = read_file_at(idx, str2, w2, fss, 0, dt, fat)) < 0)
+		printf("read #1 %d\n", x);
+	if ((x = read_file_at(idx, str2, w2, fss, 3, dt, fat)) < 0)
+		printf("read #2 %d\n", x);
 
 	serialise_metadata(fss, dt, fat);
 

@@ -3,8 +3,6 @@
 
 #include "filesystem.h"
 
-#define ROOT_IDX 0
-
 void tests_deserialise(fs_table *const dt);
 void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 					fs_table *const fat);

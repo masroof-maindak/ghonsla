@@ -7,8 +7,11 @@
 #define BLOCK_SIZE	1024	  /* number of bytes given to one block */
 #define FILE_BLOCKS 128		  /* number of blocks given to a file */
 
-#define MAX_NAME_LEN	   256 /* Maximum length of a file's name */
-#define MAX_SIZE_DIR_ENTRY	   /* Largest possible entry in the dir table */   \
+#define MAX_NAME_LEN		  256 /* Maximum length of a file's name */
+#define MAX_SIZE_DIR_ENTRY	  /* Largest possible entry in the dir table; we      \
+								 might be over-estimating a little because of 4   \
+								 bytes' worth of padding in the struct but that's \
+								 fine */                                          \
 	(sizeof(dir_entry) - sizeof(char *) + MAX_NAME_LEN)
 
 #define DIR_TABLE_ROOT_ENTRY                                                   \

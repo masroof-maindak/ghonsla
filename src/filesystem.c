@@ -18,13 +18,6 @@ size_t freeListPtr; /* idx of first block in the free chain */
 	} while (0)
 
 /**
- * @brief gets the size of an entry in a directory table
- */
-int get_dte_len(const dir_entry *dte) {
-	return (sizeof(dir_entry) - sizeof(char *) + dte->nameLen);
-}
-
-/**
  * @brief return the index of an entry in a directory table
  *
  * @return SIZE_MAX if the name being searched for was not found
@@ -302,7 +295,7 @@ bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
 
 /**
  * @brief renames an entry in the global directory table. The old 'name' is
- * freed
+ * freed. On failure, the user should free newName
  */
 bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
@@ -363,16 +356,16 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 
 	if (e->nameLen == 0)
 		e->name = "";
-	else {
+	else if (e->nameLen == 1 && b[*i] == '/') {
+		e->name = "/";
+	} else {
 		e->name = malloc(e->nameLen + 1);
-		printf("mallocing %hu bytes for %s\n", e->nameLen, b + *i);
 		if (e->name == NULL) {
 			perror("malloc() in obtain_dir_entry_from_buf()");
 			return false;
 		}
 		memcpy(e->name, b + *i, e->nameLen);
 		e->name[e->nameLen] = '\0';
-		printf("successfully set name: %s\n", e->name);
 	}
 
 	*i += e->nameLen;
@@ -418,7 +411,7 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 		return false;
 	}
 
-	for (size_t i = 0; i < fss->entryCount; i++)
+	for (size_t i = 0; i < dt->size; i++)
 		if (!obtain_dir_entry_from_buf(&dt->dirs[i], buf, &size))
 			return false;
 

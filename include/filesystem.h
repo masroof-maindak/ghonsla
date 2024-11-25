@@ -6,6 +6,8 @@
 
 #include "../include/bool.h"
 
+#define ROOT_IDX 0
+
 #define ERR_NO_AVAILABLE_BLOCKS                                                \
 	"write_to_file(): insufficient blocks available to complete write; "       \
 	"remove data and try again\n"
