@@ -354,9 +354,9 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 	memcpy(&e->nameLen, b + *i, sizeof(e->nameLen));
 	*i += sizeof(e->nameLen);
 
-	if (e->nameLen == 0)
+	if (e->nameLen == 0) {
 		e->name = "";
-	else if (e->nameLen == 1 && b[*i] == '/') {
+	} else if (e->nameLen == 1 && b[*i] == '/') {
 		e->name = "/";
 	} else {
 		e->name = malloc(e->nameLen + 1);
