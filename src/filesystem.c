@@ -223,18 +223,51 @@ int append_to_file(size_t i, const char *buf, size_t size,
 }
 
 /**
- * @brief print the contents of a directory to stdout.
+ * @brief return all the children of a provided directory in a null-terminated
+ * array; the user must free after use.
  */
-bool print_directory_contents(size_t i, fs_table *dt) {
+dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || !dt->dirs[i].isDir)
-		return false;
+		return NULL;
 
-	for (size_t j = 0; j < dt->size; j++)
-		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i)
-			printf("%s%s%s\n", dt->dirs[j].isDir ? BOLD_BLUE : CYAN,
-				   dt->dirs[j].name, RESET);
+	size_t numDirs = 8, ctr = 0;
+	dir_entry **ret = malloc(numDirs * sizeof(*ret));
 
-	return true;
+	if (ret == NULL) {
+		perror("malloc() in list_directory_contents()");
+		return NULL;
+	}
+
+	for (size_t j = 0; j < dt->size; j++) {
+		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i) {
+			ret[ctr++] = &dt->dirs[j];
+
+			if (ctr >= numDirs) {
+				numDirs *= 2;
+				void *tmp = realloc(ret, numDirs);
+				if (tmp == NULL) {
+					perror("realloc() in list_directory_contents()");
+					free(ret);
+					return NULL;
+				}
+				ret = tmp;
+			}
+		}
+	}
+
+	ret[ctr] = NULL;
+	return ret;
+}
+
+void print_directory_contents(size_t i, const fs_table *const dt) {
+	dir_entry **e = get_directory_entries(i, dt);
+	if (e == NULL)
+		return;
+
+	for (size_t i = 0; e[i] != NULL; i++)
+		printf("%s%s%s\n", e[i]->isDir ? BOLD_BLUE : CYAN, e[i]->name, RESET);
+
+	free(e);
 }
 
 /**
@@ -478,14 +511,14 @@ void clear_out_fat(size_t nmb, fs_table *fat) {
  */
 bool init_new_dir_t(int entryCount, fs_table *dt) {
 	dt->size = entryCount;
-	dt->dirs = malloc(sizeof(dir_entry) * dt->size);
+	dt->dirs = malloc(sizeof(*dt->dirs) * dt->size);
 
 	if (dt->dirs == NULL) {
 		perror("malloc() in init_new_dir_t()");
 		return false;
 	}
 
-	dt->dirs[0] = DIR_TABLE_ROOT_ENTRY;
+	dt->dirs[ROOT_IDX] = DIR_TABLE_ROOT_ENTRY;
 	for (size_t i = 1; i < dt->size; i++)
 		dt->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
 
@@ -500,16 +533,16 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
  * @param nmb number of blocks used for metadata (i.e tables and other
  * information to persist on disk)
  */
-bool init_new_fat(size_t nb, size_t nmb, fs_table *faT) {
-	faT->size	= nb;
-	faT->blocks = malloc(faT->size * sizeof(fat_entry));
+bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
+	fat->size	= nb;
+	fat->blocks = malloc(fat->size * sizeof(fat_entry));
 
-	if (faT->blocks == NULL) {
+	if (fat->blocks == NULL) {
 		perror("malloc() in init_new_fat()");
 		return false;
 	}
 
-	clear_out_fat(nmb, faT);
+	clear_out_fat(nmb, fat);
 	return true;
 }
 

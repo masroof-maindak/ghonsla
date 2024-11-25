@@ -67,11 +67,10 @@ void write_dir_entry_to_buf(const dir_entry *const e, char *const b, size_t *i);
 bool init_new_dir_t(int entryCount, fs_table *dt);
 bool init_new_fat(size_t nb, size_t nmb, fs_table *fat);
 bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat);
-void clear_out_fat(size_t nmb, fs_table *faT);
+void clear_out_fat(size_t nmb, fs_table *fat);
 void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);
 
 /* directory-table generic */
-int get_size_of_dir_entry(const dir_entry *dte);
 size_t get_index_of_dir_entry(const char *name, size_t cwd, const fs_table *dt);
 bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt);
 bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat);
@@ -90,7 +89,8 @@ int append_to_file(size_t i, const char *buf, size_t size,
 				   const fs_table *fat);
 
 /* directory-specific */
-bool print_directory_contents(size_t i, fs_table *dt);
+dir_entry **get_directory_entries(size_t i, const fs_table *const dt);
+void print_directory_contents(size_t i, const fs_table *const dt);
 
 /* fs_settings */
 bool parse_config_args(struct fs_settings *fss, int argc, char **argv);
