@@ -19,10 +19,33 @@ int main(int argc, char **argv) {
 	if (!init_fs(&fss, argc, argv, &dt, &fat))
 		return 1;
 
-	/* TODO: tb2 menu loop */
+	/* -- tb2 menu loop -- */
 	struct tb_event ev;
-	tb_init();
-	tb_poll_event(&ev);
+
+	ret = tb_init();
+
+	do {
+		ret = tb_poll_event(&ev);
+		if (ret != TB_OK) {
+			if (ret == TB_ERR_POLL && tb_last_errno() == EINTR) {
+				/* poll was interrupted, maybe by a SIGWINCH; try again */
+				continue;
+			}
+			/* some other error occurred; bail */
+			break;
+		}
+
+		switch (ev.type) {
+		case TB_EVENT_KEY:
+			break;
+		case TB_EVENT_RESIZE:
+			break;
+		default:
+			break;
+		}
+
+	} while (1);
+
 	tb_shutdown();
 	/* ------------------- */
 
@@ -37,7 +60,8 @@ int main(int argc, char **argv) {
 		perror("fclose() in main()");
 	free(dt.dirs);
 	free(fat.blocks);
-	return ret;
+
+	return 0;
 }
 
 /**

@@ -469,7 +469,6 @@ void clear_out_fat(size_t nmb, fs_table *fat) {
 	fat->blocks[fat->size - 1].next = SIZE_MAX;
 
 	/* initialise free chain */
-	/* CHECK: off by one? */
 	freeListPtr = nmb;
 }
 
