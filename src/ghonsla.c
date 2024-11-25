@@ -95,12 +95,12 @@ void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 	char *rename	= copy_string("f2_renamed");
 	char *secondDir = copy_string("secondDir");
 	char *f4name	= copy_string("f4");
-	size_t idx		= ROOT_IDX;
+	/* these get freed @ format time or by rename/remove operations */
 
 	create_dir_entry(firstDir, ROOT_IDX, true, dt);
 	create_dir_entry(f1name, ROOT_IDX, false, dt);
 
-	idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
+	size_t idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
 	remove_dir_entry(idx, dt, fat);
 	f1name = NULL;
 
@@ -155,10 +155,4 @@ void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 		printf("read #2 %d\n", x);
 
 	serialise_metadata(fss, dt, fat);
-
-	/* free(firstDir); */
-	/* free(f3name); */
-	/* free(rename); */
-	/* free(secondDir); */
-	/* free(f4name); */
 }
