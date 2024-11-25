@@ -3,6 +3,7 @@
 ### Usage
 
 ```bash
+git clone --recursive https://github.com/masroof-maindak/ghonsla.git
 make
 ./ghonsla [-m size-in-MBs] [-n entry-count]  [-s block-size] [-b file-max-block-count]
 ```
