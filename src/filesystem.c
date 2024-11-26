@@ -302,6 +302,8 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	/* Set the start of this (now empty) chain as the free list */
 	freeListPtr = dt->dirs[i].firstBlockIdx;
 
+	dt->dirs[i].firstBlockIdx = SIZE_MAX;
+	dt->dirs[i].size		  = 0;
 	return true;
 }
 
