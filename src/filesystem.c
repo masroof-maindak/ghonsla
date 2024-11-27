@@ -234,10 +234,11 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 	dir_entry **ret = malloc(numDirs * sizeof(*ret));
 
 	if (ret == NULL) {
-		perror("malloc() in list_directory_contents()");
+		perror("malloc() in get_directory_contents()");
 		return NULL;
 	}
 
+	/* generate list */
 	for (size_t j = 0; j < dt->size; j++) {
 		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i) {
 			ret[ctr++] = &dt->dirs[j];
@@ -246,7 +247,7 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 				numDirs *= 2;
 				void *tmp = realloc(ret, numDirs);
 				if (tmp == NULL) {
-					perror("realloc() in list_directory_contents()");
+					perror("realloc() in get_directory_contents()");
 					free(ret);
 					return NULL;
 				}
@@ -256,6 +257,9 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 	}
 
 	ret[ctr] = NULL;
+
+	/* TODO: sort entries */
+
 	return ret;
 }
 

@@ -1,67 +1,47 @@
 #include <errno.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <curses.h>
+#include <menu.h>
+#undef bool
 
 #include "../include/defaults.h"
 #include "../include/ghonsla.h"
 #include "../include/utils.h"
-#include "../lib/termbox2/termbox2.h"
 
 FILE *fs = NULL;
 
 int main(int argc, char **argv) {
-	int ret				   = 0;
 	fs_table dt			   = {.size = 0, .dirs = NULL};
 	fs_table fat		   = {.size = 0, .blocks = NULL};
 	struct fs_settings fss = DEFAULT_CFG;
 
+	bool chdir = false;
+	int cwd	   = ROOT_IDX;
+	int ret	   = 0;
+
 	if (!init_fs(&fss, argc, argv, &dt, &fat))
 		return 1;
 
-	/* -- tb2 menu loop -- */
-	struct tb_event ev;
-
-	ret = tb_init();
-
-	do {
-		ret = tb_poll_event(&ev);
-		if (ret != TB_OK) {
-			if (ret == TB_ERR_POLL && tb_last_errno() == EINTR) {
-				/* poll was interrupted, maybe by a SIGWINCH; try again */
-				continue;
-			}
-			/* some other error occurred; bail */
-			break;
-		}
-
-		switch (ev.type) {
-		case TB_EVENT_KEY:
-			break;
-		case TB_EVENT_RESIZE:
-			break;
-		default:
-			break;
-		}
-
-	} while (1);
-
-	tb_shutdown();
 	/* ------------------- */
+	dir_entry **entries = get_directory_entries(cwd, &dt);
 
+	for (;;) {
+	};
+
+	/* ------------------- */
 	/* cleanup: */
 	serialise_metadata(&fss, &dt, &fat);
 	format_fs(&fss, &dt, &fat);
 
-	printf("/:\n");
-	print_directory_contents(ROOT_IDX, &dt);
-
 	if (fclose(fs) == EOF)
 		perror("fclose() in main()");
+
 	free(dt.dirs);
 	free(fat.blocks);
 
-	return 0;
+	return ret;
 }
 
 /**

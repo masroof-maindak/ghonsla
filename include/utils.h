@@ -22,6 +22,15 @@
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
+#define swap(x, y)                                                             \
+	do {                                                                       \
+		unsigned char                                                          \
+			swp_tmp[sizeof(x) == sizeof(y) ? (signed)sizeof(x) : -1];          \
+		memcpy(swp_tmp, &y, sizeof(x));                                        \
+		memcpy(&y, &x, sizeof(x));                                             \
+		memcpy(&x, swp_tmp, sizeof(x));                                        \
+	} while (0)
+
 char *copy_string(const char *str);
 char *double_if_Of(char *buf, size_t idx, size_t add, size_t *size);
 void parse_and_set_ul(unsigned long *dst, char *src);
