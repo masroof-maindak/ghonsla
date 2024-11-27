@@ -225,12 +225,16 @@ int append_to_file(size_t i, const char *buf, size_t size,
 /**
  * @brief return all the children of a provided directory in a null-terminated
  * array; the user must free after use.
+ *
+ * @param n number of children
  */
-dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
+dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
+								  size_t *n) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || !dt->dirs[i].isDir)
 		return NULL;
 
-	size_t numDirs = 8, ctr = 0;
+	*n				= 0;
+	size_t numDirs	= 8;
 	dir_entry **ret = malloc(numDirs * sizeof(*ret));
 
 	if (ret == NULL) {
@@ -241,9 +245,9 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 	/* generate list */
 	for (size_t j = 0; j < dt->size; j++) {
 		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i) {
-			ret[ctr++] = &dt->dirs[j];
+			ret[(*n)++] = &dt->dirs[j];
 
-			if (ctr >= numDirs) {
+			if (*n >= numDirs) {
 				numDirs *= 2;
 				void *tmp = realloc(ret, numDirs);
 				if (tmp == NULL) {
@@ -256,7 +260,7 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 		}
 	}
 
-	ret[ctr] = NULL;
+	ret[*n] = NULL;
 
 	/* TODO: sort entries */
 
@@ -264,7 +268,8 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt) {
 }
 
 void print_directory_contents(size_t i, const fs_table *const dt) {
-	dir_entry **e = get_directory_entries(i, dt);
+	size_t x;
+	dir_entry **e = get_directory_entries(i, dt, &x);
 	if (e == NULL)
 		return;
 

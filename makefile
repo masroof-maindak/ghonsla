@@ -1,5 +1,5 @@
 CFLAGS = -Wall -Wextra -pedantic
-LDFLAGS = -lcurses -lmenu
+LDFLAGS = -lmenu -lcurses
 RELEASE_FLAGS = -march=native -O3
 DEBUG_FLAGS = -g3 -O0
 

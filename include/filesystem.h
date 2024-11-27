@@ -89,7 +89,7 @@ int append_to_file(size_t i, const char *buf, size_t size,
 				   const fs_table *fat);
 
 /* directory-specific */
-dir_entry **get_directory_entries(size_t i, const fs_table *const dt);
+dir_entry **get_directory_entries(size_t i, const fs_table *const dt, size_t *n);
 void print_directory_contents(size_t i, const fs_table *const dt);
 
 /* fs_settings */

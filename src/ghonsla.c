@@ -1,8 +1,8 @@
+#include <curses.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <curses.h>
 #include <menu.h>
 #undef bool
 
@@ -17,22 +17,108 @@ int main(int argc, char **argv) {
 	fs_table fat		   = {.size = 0, .blocks = NULL};
 	struct fs_settings fss = DEFAULT_CFG;
 
-	bool chdir = false;
-	int cwd	   = ROOT_IDX;
-	int ret	   = 0;
+	int cwd		= ROOT_IDX;
+	int ret		= 0;
+	int menuIdx = -1;
+	int input;
+	bool chdir = false, leave = false;
+	size_t tmp;
 
 	if (!init_fs(&fss, argc, argv, &dt, &fat))
 		return 1;
 
-	/* ------------------- */
-	dir_entry **entries = get_directory_entries(cwd, &dt);
+	/* ------NCURSES------ */
+	/* TODO: handle errors */
+	initscr();
+	noecho();
+	cbreak();
+	keypad(stdscr, TRUE);
 
-	for (;;) {
+	while (!leave) {
+		size_t childCount	= 0;
+		dir_entry **entries = get_directory_entries(cwd, &dt, &childCount);
+		chdir				= false;
+
+		ITEM **cwdMenuItems = calloc(childCount + 1, sizeof(ITEM *));
+
+		for (size_t i = 0; i < childCount; i++)
+			cwdMenuItems[i] = new_item(entries[i]->name, NULL);
+		cwdMenuItems[childCount] = NULL;
+
+		MENU *cwdMenu = new_menu(cwdMenuItems);
+		post_menu(cwdMenu);
+		menuIdx = item_index(current_item(cwdMenu));
+		mvprintw(LINES - 2, 0, "cwd: %d", cwd);
+		refresh();
+
+		while (!leave && !chdir) {
+			input	= getch();
+			menuIdx = item_index(current_item(cwdMenu));
+
+			switch (input) {
+			case KEY_DOWN:
+			case 'j':
+				menu_driver(cwdMenu, REQ_DOWN_ITEM);
+				mvprintw(LINES - 3, 0, "pIdx: %zu",
+						 entries[menuIdx]->parentIdx);
+				break;
+
+			case KEY_UP:
+			case 'k':
+				menu_driver(cwdMenu, REQ_UP_ITEM);
+				mvprintw(LINES - 3, 0, "pIdx: %zu",
+						 entries[menuIdx]->parentIdx);
+				break;
+
+			case '\n':
+			case 'l': /* step into child directory */
+				tmp = get_index_of_dir_entry(entries[menuIdx]->name, cwd, &dt);
+				if (entries[menuIdx]->isDir) {
+					chdir = true;
+					cwd	  = tmp;
+				}
+				mvprintw(LINES - 3, 0, "pIdx: %zu",
+						 entries[menuIdx]->parentIdx);
+
+				break;
+
+			case 'h': /* go up to parent directory */
+				chdir = true;
+				cwd	  = entries[0]->parentIdx;
+				break;
+
+			case 't': /* touch */
+				/* create_dir_entry(, cwd, false, dt); */
+				break;
+
+			case 'm': /* mkdir */
+				/* create_dir_entry(, cwd, true, dt); */
+				break;
+
+			case 'r': /* remove */
+				tmp = get_index_of_dir_entry(entries[menuIdx]->name, cwd, &dt);
+				remove_dir_entry(tmp, &dt, &fat);
+				break;
+
+			case 'q':
+				leave = true;
+				break;
+			}
+		}
+
+		unpost_menu(cwdMenu);
+		free_menu(cwdMenu);
+		for (size_t i = 0; i < childCount; i++)
+			free_item(cwdMenuItems[i]);
+		free(cwdMenuItems);
+		free(entries);
 	};
 
-	/* ------------------- */
-	/* cleanup: */
-	serialise_metadata(&fss, &dt, &fat);
+	endwin();
+	/* ------NCURSES------ */
+
+	/* TODO: undo once ncurses locked in */
+	/* serialise_metadata(&fss, &dt, &fat); */
 	format_fs(&fss, &dt, &fat);
 
 	if (fclose(fs) == EOF)
