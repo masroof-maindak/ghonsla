@@ -34,6 +34,7 @@ int main(int argc, char **argv) {
 	cbreak();
 	keypad(stdscr, TRUE);
 
+	dir_entry *curr = &dt.dirs[ROOT_IDX];
 	while (!leave) {
 		size_t childCount	= 0;
 		dir_entry **entries = get_directory_entries(cwd, &dt, &childCount);
@@ -59,15 +60,15 @@ int main(int argc, char **argv) {
 			case KEY_DOWN:
 			case 'j':
 				menu_driver(cwdMenu, REQ_DOWN_ITEM);
-				mvprintw(LINES - 3, 0, "pIdx: %zu",
-						 entries[menuIdx]->parentIdx);
+				/* mvprintw(LINES - 3, 0, "pIdx: %zu", */
+				/* 		 entries[menuIdx]->parentIdx); */
 				break;
 
 			case KEY_UP:
 			case 'k':
 				menu_driver(cwdMenu, REQ_UP_ITEM);
-				mvprintw(LINES - 3, 0, "pIdx: %zu",
-						 entries[menuIdx]->parentIdx);
+				/* mvprintw(LINES - 3, 0, "pIdx: %zu", */
+				/* 		 entries[menuIdx]->parentIdx); */
 				break;
 
 			case '\n':
@@ -77,14 +78,15 @@ int main(int argc, char **argv) {
 					chdir = true;
 					cwd	  = tmp;
 				}
-				mvprintw(LINES - 3, 0, "pIdx: %zu",
-						 entries[menuIdx]->parentIdx);
-
+				/* mvprintw(LINES - 3, 0, "pIdx: %zu", */
+				/* 		 entries[menuIdx]->parentIdx); */
+				curr = &dt.dirs[cwd];
 				break;
 
 			case 'h': /* go up to parent directory */
 				chdir = true;
-				cwd	  = entries[0]->parentIdx;
+				cwd	  = curr->parentIdx;
+				curr  = &dt.dirs[curr->parentIdx];
 				break;
 
 			case 't': /* touch */
@@ -98,6 +100,7 @@ int main(int argc, char **argv) {
 			case 'r': /* remove */
 				tmp = get_index_of_dir_entry(entries[menuIdx]->name, cwd, &dt);
 				remove_dir_entry(tmp, &dt, &fat);
+				/* TODO: force re-draw */
 				break;
 
 			case 'q':
