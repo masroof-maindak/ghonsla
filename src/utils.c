@@ -24,6 +24,7 @@ char *double_if_Of(char *buf, size_t idx, size_t add, size_t *capacity) {
 			free(buf);
 			return NULL;
 		}
+		buf = tmp;
 	}
 
 	return buf;
