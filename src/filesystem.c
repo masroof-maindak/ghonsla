@@ -70,41 +70,41 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
  * @details read the contents of a file into a buffer, starting from a specified
  * index, and running till a specific length
  *
- * @pre buf has 'size' bytes
+ * @pre retBuf is 'size' bytes long
  *
  * @param fp start reading at this index
  * @param size read this many bytes
  */
-int read_file_at(size_t i, char *const buf, size_t size,
-				 struct fs_settings *fss, size_t fp, const fs_table *dt,
+int read_file_at(size_t i, char *const retBuf, size_t size,
+				 struct fs_settings *fss, size_t fPos, const fs_table *dt,
 				 const fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
 
-	if (fp + size > dt->dirs[i].size)
+	if (fPos + size > dt->dirs[i].size)
 		return -2;
 
-	if (buf == NULL)
+	if (retBuf == NULL)
 		return 0;
 
 	size_t bIdx = dt->dirs[i].firstBlockIdx;
 
-	while (fp > fss->blockSize) {
-		fp -= fss->blockSize;
+	while (fPos > fss->blockSize) {
+		fPos -= fss->blockSize;
 		bIdx = fat->blocks[bIdx].next;
 	}
 
-	char bData[fss->blockSize];
+	char dataBuf[fss->blockSize];
 	size_t written = 0;
 
 	while (size > 0) {
-		if (read_block(bIdx, fss->blockSize, bData) != 0)
+		if (read_block(bIdx, fss->blockSize, dataBuf) != 0)
 			return -3;
 
-		int bytesCopied = MIN(fss->blockSize - fp, size);
-		memcpy(buf + written, bData + fp, bytesCopied);
+		int bytesCopied = MIN(fss->blockSize - fPos, size);
+		memcpy(retBuf + written, dataBuf + fPos, bytesCopied);
 
-		fp = 0;
+		fPos = 0;
 		size -= bytesCopied;
 		written += bytesCopied;
 
@@ -140,12 +140,12 @@ int read_file_at(size_t i, char *const buf, size_t size,
  * @return 0 on success, negative on failure
  */
 int write_to_file(size_t i, const char *buf, size_t size,
-				  const struct fs_settings *fss, size_t fp, const fs_table *dt,
-				  const fs_table *fat) {
+				  const struct fs_settings *fss, size_t fPos,
+				  const fs_table *dt, const fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
 
-	if (fp > dt->dirs[i].size)
+	if (fPos > dt->dirs[i].size)
 		return -2;
 
 	if (buf == NULL || size == 0)
@@ -153,8 +153,8 @@ int write_to_file(size_t i, const char *buf, size_t size,
 
 	size_t bIdx = dt->dirs[i].firstBlockIdx;
 
-	while (fp > fss->blockSize) {
-		fp -= fss->blockSize;
+	while (fPos > fss->blockSize) {
+		fPos -= fss->blockSize;
 		bIdx = fat->blocks[bIdx].next;
 	}
 
@@ -169,25 +169,25 @@ int write_to_file(size_t i, const char *buf, size_t size,
 		fat->blocks[bIdx].next = SIZE_MAX;
 	}
 
-	char bData[fss->blockSize];
+	char dataBuf[fss->blockSize];
 
 	while (size > 0) {
-		if (read_block(bIdx, fss->blockSize, bData) != 0)
+		if (read_block(bIdx, fss->blockSize, dataBuf) != 0)
 			return -4;
 
-		int bytesCopied = MIN(fss->blockSize - fp, size);
-		memcpy(bData + fp, buf, bytesCopied);
+		int bytesCopied = MIN(fss->blockSize - fPos, size);
+		memcpy(dataBuf + fPos, buf, bytesCopied);
 
-		if (write_block(bIdx, fss->blockSize, bData) != 0)
+		if (write_block(bIdx, fss->blockSize, dataBuf) != 0)
 			return -5;
 
-		size_t newUsage = fp + bytesCopied;
+		size_t newUsage = fPos + bytesCopied;
 		if (newUsage > fat->blocks[bIdx].used) {
 			dt->dirs[i].size += (newUsage - fat->blocks[bIdx].used);
 			fat->blocks[bIdx].used = newUsage;
 		}
 
-		fp = 0;
+		fPos = 0;
 		size -= bytesCopied;
 		buf += bytesCopied;
 

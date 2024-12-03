@@ -33,8 +33,8 @@ make
 - [x] Directory table/FAT Persistence
     - [x] Serialise
     - [x] Deserialise
-- [ ] ~~Termbox2~~Ncurses TUI
-    - [ ] Print filesystem settings on top/bottom row?
+- [x] ~~Termbox2~~Ncurses TUI
+    - [x] Print filesystem settings on top/bottom row?
 - [ ] Encryption on-disk
 - [ ] Optimise disk writes (buffered I/O)?
 - [ ] Multi-partition support?

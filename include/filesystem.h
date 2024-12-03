@@ -14,7 +14,7 @@
 
 #define ERR_FILE_MAX_BLOCKS                                                    \
 	"write_to_file(): file has reached the maximum allowable number of "       \
-	"blocks (%zd)\n"
+	"blocks (%zu)\n"
 
 struct fs_settings {
 	/* Configurable; determined via CLI args */
@@ -79,17 +79,18 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt);
 /* file-specific */
 bool truncate_file(size_t i, fs_table *dt, fs_table *fat);
 int read_file_at(size_t i, char *const buf, size_t size,
-				 struct fs_settings *fss, size_t fp, const fs_table *dt,
+				 struct fs_settings *fss, size_t fPos, const fs_table *dt,
 				 const fs_table *fat);
 int write_to_file(size_t i, const char *buf, size_t size,
-				  const struct fs_settings *fss, size_t fp, const fs_table *dt,
-				  const fs_table *fat);
+				  const struct fs_settings *fss, size_t fPos,
+				  const fs_table *dt, const fs_table *fat);
 int append_to_file(size_t i, const char *buf, size_t size,
 				   struct fs_settings *fss, const fs_table *dt,
 				   const fs_table *fat);
 
 /* directory-specific */
-dir_entry **get_directory_entries(size_t i, const fs_table *const dt, size_t *n);
+dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
+								  size_t *n);
 void print_directory_contents(size_t i, const fs_table *const dt);
 
 /* fs_settings */
