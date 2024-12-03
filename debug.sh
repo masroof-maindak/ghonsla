@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-bp="deserialise_metadata"
+bp="filesystem.c:151"
 bin="./ghonsla"
 
-# rm disk.fs
+rm disk.fs
 make
 gdb --quiet -ex "break ${bp}" -ex 'run' "$bin"

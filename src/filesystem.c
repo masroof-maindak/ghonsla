@@ -23,7 +23,7 @@ size_t freeListPtr; /* idx of first block in the free chain */
  * @return SIZE_MAX if the name being searched for was not found
  */
 size_t get_index_of_dir_entry(const char *name, size_t cwd,
-							  const fs_table *dt) {
+							  const dir_table *dt) {
 	unsigned short nameLen = strlen(name);
 
 	for (size_t i = 0; i < dt->size; i++)
@@ -40,7 +40,7 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd,
  * `cwd` index, if a free entry is found. `name` must point to a
  * heap-allocated string.
  */
-bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
+bool create_dir_entry(char *name, size_t cwd, bool isDir, const dir_table *dt) {
 	/* find free spot & and verify we don't exist already */
 	if (get_index_of_dir_entry(name, cwd, dt) != SIZE_MAX)
 		return false;
@@ -55,13 +55,12 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
 	if (i == dt->size || nameLen > MAX_NAME_LEN)
 		return false;
 
-	dt->dirs[i] = (dir_entry){.valid		 = true,
-							  .isDir		 = isDir,
-							  .nameLen		 = nameLen,
-							  .name			 = name,
-							  .size			 = 0,
-							  .parentIdx	 = cwd,
-							  .firstBlockIdx = SIZE_MAX};
+	dt->dirs[i].valid	  = true;
+	dt->dirs[i].isDir	  = isDir;
+	dt->dirs[i].nameLen	  = nameLen;
+	dt->dirs[i].name	  = name;
+	dt->dirs[i].size	  = 0;
+	dt->dirs[i].parentIdx = cwd;
 
 	return true;
 }
@@ -76,8 +75,7 @@ bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
  * @param size read this many bytes
  */
 int read_file_at(size_t i, char *const retBuf, size_t size,
-				 struct fs_settings *fss, size_t fPos, const fs_table *dt,
-				 const fs_table *fat) {
+				 struct fs_settings *fss, size_t fPos, const dir_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
 
@@ -87,18 +85,11 @@ int read_file_at(size_t i, char *const retBuf, size_t size,
 	if (retBuf == NULL)
 		return 0;
 
-	size_t bIdx = dt->dirs[i].firstBlockIdx;
-
-	while (fPos > fss->blockSize) {
-		fPos -= fss->blockSize;
-		bIdx = fat->blocks[bIdx].next;
-	}
-
 	char dataBuf[fss->blockSize];
 	size_t written = 0;
 
-	while (size > 0) {
-		if (read_block(bIdx, fss->blockSize, dataBuf) != 0)
+	for (unsigned short blockNo = fPos / fss->blockSize; size > 0; blockNo++) {
+		if (read_block(dt->dirs[i].idx[blockNo], fss->blockSize, dataBuf) != 0)
 			return -3;
 
 		int bytesCopied = MIN(fss->blockSize - fPos, size);
@@ -107,14 +98,6 @@ int read_file_at(size_t i, char *const retBuf, size_t size,
 		fPos = 0;
 		size -= bytesCopied;
 		written += bytesCopied;
-
-		if (size > 0) {
-			bIdx = fat->blocks[bIdx].next;
-			if (bIdx == SIZE_MAX) {
-				fprintf(stderr, "read_file_at(): unexpected EoF reached");
-				return -4;
-			}
-		}
 	}
 
 	return 0;
@@ -141,7 +124,7 @@ int read_file_at(size_t i, char *const retBuf, size_t size,
  */
 int write_to_file(size_t i, const char *buf, size_t size,
 				  const struct fs_settings *fss, size_t fPos,
-				  const fs_table *dt, const fs_table *fat) {
+				  const dir_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
 
@@ -151,75 +134,37 @@ int write_to_file(size_t i, const char *buf, size_t size,
 	if (buf == NULL || size == 0)
 		return 0;
 
-	size_t bIdx = dt->dirs[i].firstBlockIdx;
-
-	while (fPos > fss->blockSize) {
-		fPos -= fss->blockSize;
-		bIdx = fat->blocks[bIdx].next;
-	}
-
-	if (bIdx == SIZE_MAX) { /* file is empty */
-		if (freeListPtr == SIZE_MAX) {
-			fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
-			return -3;
-		}
-
-		bIdx = dt->dirs[i].firstBlockIdx = freeListPtr;
-		INCREMENT_FREE_LIST_PTR;
-		fat->blocks[bIdx].next = SIZE_MAX;
-	}
-
 	char dataBuf[fss->blockSize];
 
-	while (size > 0) {
-		if (read_block(bIdx, fss->blockSize, dataBuf) != 0)
-			return -4;
+	for (unsigned short blockNo = fPos / fss->blockSize; size > 0; blockNo++) {
+		if (read_block(dt->dirs[i].idx[blockNo], fss->blockSize, dataBuf) != 0)
+			return -3;
 
 		int bytesCopied = MIN(fss->blockSize - fPos, size);
 		memcpy(dataBuf + fPos, buf, bytesCopied);
 
-		if (write_block(bIdx, fss->blockSize, dataBuf) != 0)
-			return -5;
+		if (write_block(dt->dirs[i].idx[blockNo], fss->blockSize, dataBuf) != 0)
+			return -4;
 
-		size_t newUsage = fPos + bytesCopied;
-		if (newUsage > fat->blocks[bIdx].used) {
-			dt->dirs[i].size += (newUsage - fat->blocks[bIdx].used);
-			fat->blocks[bIdx].used = newUsage;
+		/* update file size */
+		if (blockNo == dt->dirs[i].size / fss->blockSize) {
+			size_t finalBlockUsage = dt->dirs[i].size % fss->blockSize;
+			size_t newUsage		   = fPos + bytesCopied;
+			if (newUsage > finalBlockUsage)
+				dt->dirs[i].size += newUsage;
 		}
 
 		fPos = 0;
 		size -= bytesCopied;
 		buf += bytesCopied;
-
-		if (size > 0) {
-			if (fat->blocks[bIdx].next != SIZE_MAX) {
-				bIdx = fat->blocks[bIdx].next;
-				continue;
-			}
-
-			if (dt->dirs[bIdx].size / fss->blockSize > fss->fMaxBlocks) {
-				fprintf(stderr, ERR_FILE_MAX_BLOCKS, fss->fMaxBlocks);
-				return -6;
-			}
-
-			if (freeListPtr == SIZE_MAX) {
-				fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
-				return -7;
-			}
-
-			bIdx = fat->blocks[bIdx].next = freeListPtr;
-			INCREMENT_FREE_LIST_PTR;
-			fat->blocks[bIdx].next = SIZE_MAX;
-		}
 	}
 
 	return 0;
 }
 
 int append_to_file(size_t i, const char *buf, size_t size,
-				   struct fs_settings *fss, const fs_table *dt,
-				   const fs_table *fat) {
-	return write_to_file(i, buf, size, fss, dt->dirs[i].size, dt, fat);
+				   struct fs_settings *fss, const dir_table *dt) {
+	return write_to_file(i, buf, size, fss, dt->dirs[i].size, dt);
 }
 
 /**
@@ -228,7 +173,7 @@ int append_to_file(size_t i, const char *buf, size_t size,
  *
  * @param n number of children
  */
-dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
+dir_entry **get_directory_entries(size_t i, const dir_table *const dt,
 								  size_t *n) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || !dt->dirs[i].isDir)
 		return NULL;
@@ -267,7 +212,7 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
 	return ret;
 }
 
-void print_directory_contents(size_t i, const fs_table *const dt) {
+void print_directory_contents(size_t i, const dir_table *const dt) {
 	size_t x;
 	dir_entry **e = get_directory_entries(i, dt, &x);
 	if (e == NULL)
@@ -287,32 +232,11 @@ void print_directory_contents(size_t i, const fs_table *const dt) {
  * @pre the final block of a file's content chain has it's 'next' set to
  * SIZE_MAX.
  */
-bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
+bool truncate_file(size_t i, dir_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return false;
 
-	if (dt->dirs[i].size == 0)
-		return true;
-
-	size_t bIdx = dt->dirs[i].firstBlockIdx;
-	size_t prev = bIdx;
-
-	/* traverse the file's chain until we reach the final block */
-	while (bIdx != SIZE_MAX) {
-		fat->blocks[bIdx].used = 0;
-		prev				   = bIdx;
-		bIdx				   = fat->blocks[bIdx].next;
-	}
-	bIdx = prev;
-
-	/* Point the end of this file's chain towards the free list */
-	fat->blocks[bIdx].next = freeListPtr;
-
-	/* Set the start of this (now empty) chain as the free list */
-	freeListPtr = dt->dirs[i].firstBlockIdx;
-
-	dt->dirs[i].firstBlockIdx = SIZE_MAX;
-	dt->dirs[i].size		  = 0;
+	dt->dirs[i].size = 0;
 	return true;
 }
 
@@ -320,16 +244,16 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
  * @brief Delete a file or recursively, the contents of a directory. The
  * 'name' is freed.
  */
-bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
-	if (i == SIZE_MAX || i == ROOT_IDX || !dt->dirs[i].valid)
+bool remove_dir_entry(size_t i, dir_table *dt) {
+	if (i == SIZE_MAX || i == 0 || i == ROOT_IDX || !dt->dirs[i].valid)
 		return false;
 
 	if (!dt->dirs[i].isDir) {
-		truncate_file(i, dt, fat);
+		truncate_file(i, dt);
 	} else {
 		for (size_t j = 0; j < dt->size; j++)
 			if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i)
-				remove_dir_entry(j, dt, fat);
+				remove_dir_entry(j, dt);
 	}
 
 	free(dt->dirs[i].name);
@@ -341,7 +265,7 @@ bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
  * @brief renames an entry in the global directory table. The old 'name' is
  * freed. On failure, the user should free newName
  */
-bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
+bool rename_dir_entry(char *newName, size_t i, dir_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
@@ -359,8 +283,8 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 /**
  * @brief writes all metadata to a buffer and then the filesystem
  */
-bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
-						const fs_table *const fat) {
+bool serialise_metadata(const struct fs_settings *fss,
+						const dir_table *const dt) {
 	size_t size = 0;
 	char buf[fss->numMdBlocks * fss->blockSize];
 	memset(buf, 0, sizeof(buf));
@@ -372,10 +296,6 @@ bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
 	/* directory table */
 	for (size_t i = 0; i < dt->size; i++)
 		write_dir_entry_to_buf(&dt->dirs[i], buf, &size);
-
-	/* file allocation table */
-	memcpy(buf + size, fat->blocks, sizeof(fat_entry) * fat->size);
-	size += sizeof(fat_entry) * fat->size;
 
 	/* serialisation */
 	for (size_t i = 0; i < fss->numMdBlocks; size -= fss->blockSize, i++)
@@ -417,8 +337,8 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 	*i += sizeof(e->size);
 	memcpy(&e->parentIdx, b + *i, sizeof(e->parentIdx));
 	*i += sizeof(e->parentIdx);
-	memcpy(&e->firstBlockIdx, b + *i, sizeof(e->firstBlockIdx));
-	*i += sizeof(e->firstBlockIdx);
+	memcpy(&e->idx, b + *i, sizeof(e->idx));
+	*i += sizeof(e->idx);
 
 	return true;
 }
@@ -426,9 +346,7 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 /**
  * @brief recovers all metadata from the filesystem to the relevant structures
  */
-bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
-						  fs_table *const fat) {
-
+bool deserialise_metadata(struct fs_settings *const fss, dir_table *const dt) {
 	/* obtain settings */
 	size_t size = sizeof(struct fs_settings);
 	char tmp[BLOCK_SIZE];
@@ -448,7 +366,7 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 
 	/* directory table */
 	dt->size = fss->entryCount;
-	dt->dirs = malloc(sizeof(dir_entry) * dt->size);
+	dt->dirs = malloc(sizeof(dir_entry) * fss->entryCount);
 
 	if (dt->dirs == NULL) {
 		perror("malloc() in deserialise_metadata() - dt->dirs");
@@ -458,18 +376,6 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 	for (size_t i = 0; i < dt->size; i++)
 		if (!obtain_dir_entry_from_buf(&dt->dirs[i], buf, &size))
 			return false;
-
-	/* file allocation table */
-	fat->size	= fss->numBlocks;
-	fat->blocks = malloc(fat->size * sizeof(fat_entry));
-
-	if (fat->blocks == NULL) {
-		free(dt->dirs);
-		perror("malloc() in deserialise_metadata() - fat->blocks");
-		return false;
-	}
-
-	memcpy(fat->blocks, buf + size, sizeof(fat_entry) * fat->size);
 
 	return true;
 }
@@ -494,33 +400,15 @@ void write_dir_entry_to_buf(const dir_entry *const e, char *const b,
 	*i += sizeof(e->size);
 	memcpy(b + *i, &e->parentIdx, sizeof(e->parentIdx));
 	*i += sizeof(e->parentIdx);
-	memcpy(b + *i, &e->firstBlockIdx, sizeof(e->firstBlockIdx));
-	*i += sizeof(e->firstBlockIdx);
-}
-
-/**
- * @param nmb number of metadata blocks
- */
-void clear_out_fat(size_t nmb, fs_table *fat) {
-	/* zero out blocks holding metadata */
-	memset(fat->blocks, 0, nmb * sizeof(fat_entry));
-
-	/* initialise the FAT as a free list */
-	for (size_t i = nmb; i < fat->size; i++)
-		fat->blocks[i] = (fat_entry){.used = 0, .next = i + 1};
-
-	/* point the end of the free chain to SIZE_MAX */
-	fat->blocks[fat->size - 1].next = SIZE_MAX;
-
-	/* initialise free chain */
-	freeListPtr = nmb;
+	memcpy(b + *i, &e->idx, sizeof(e->idx));
+	*i += sizeof(e->idx);
 }
 
 /**
  * @brief creates a directory table in memory, populates it with the root
  * entry and garbage entries
  */
-bool init_new_dir_t(int entryCount, fs_table *dt) {
+bool init_new_dir_t(int entryCount, dir_table *dt, size_t numMdBlocks) {
 	dt->size = entryCount;
 	dt->dirs = malloc(sizeof(*dt->dirs) * dt->size);
 
@@ -529,31 +417,19 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
 		return false;
 	}
 
+	size_t c = numMdBlocks;
+
 	dt->dirs[ROOT_IDX] = DIR_TABLE_ROOT_ENTRY;
-	for (size_t i = 1; i < dt->size; i++)
+	for (int j = 0; j < MAX_INDEX_BLOCKS; j++, c++)
+		dt->dirs[ROOT_IDX].idx[j] = c;
+
+	for (size_t i = 1; i < dt->size; i++) {
 		dt->dirs[i] = DIR_TABLE_GARBAGE_ENTRY;
-
-	return true;
-}
-
-/**
- * @brief allocates a new file allocation table having enough space for
- * every block in the filesystem
- *
- * @param nb number of blocks in the filesystem
- * @param nmb number of blocks used for metadata (i.e tables and other
- * information to persist on disk)
- */
-bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
-	fat->size	= nb;
-	fat->blocks = malloc(fat->size * sizeof(fat_entry));
-
-	if (fat->blocks == NULL) {
-		perror("malloc() in init_new_fat()");
-		return false;
+		for (int j = 0; j < MAX_INDEX_BLOCKS; j++, c++) {
+			dt->dirs[i].idx[j] = c;
+		}
 	}
 
-	clear_out_fat(nmb, fat);
 	return true;
 }
 
@@ -564,7 +440,7 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
  * should perform all relevant cleanup first, namely freeing the global
  * structures.
  */
-bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
+bool init_new_fs(const struct fs_settings *fss, dir_table *dt) {
 	/* open file for writing */
 	if ((fs = fopen(FS_NAME, "w+")) == NULL) {
 		perror("fopen() in init_new_fs()");
@@ -572,20 +448,14 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	}
 
 	/* create relevant tables in memory */
-	if (!init_new_dir_t(fss->entryCount, dt))
+	if (!init_new_dir_t(fss->entryCount, dt, fss->numMdBlocks))
 		goto fclose;
-
-	if (!init_new_fat(fss->numBlocks, fss->numMdBlocks, fat)) {
-		free(dt->dirs);
-		goto fclose;
-	}
 
 	/* write garbage blocks to disk */
 	char *buf = calloc(fss->blockSize, sizeof(char));
 	if (buf == NULL) {
 		perror("calloc() in init_new_fs()");
 		free(dt->dirs);
-		free(fat->blocks);
 		goto fclose;
 	}
 
@@ -593,7 +463,6 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 		if (write_block(i, fss->blockSize, buf) != 0) {
 			fprintf(stderr, "init_new_fs(): failed at block #%zd\n", i);
 			free(dt->dirs);
-			free(fat->blocks);
 			free(buf);
 			goto fclose;
 		}
@@ -611,10 +480,9 @@ fclose:
 /**
  * @brief: resets state-relevant tables to make them available to write over
  */
-void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
-	for (size_t i = 1; i < dt->size; i++)
-		remove_dir_entry(i, dt, fat);
-	clear_out_fat(fss->numMdBlocks, fat);
+void format_fs(struct fs_settings *fss, dir_table *dt) {
+	for (size_t i = 1; i < fss->entryCount; i++)
+		remove_dir_entry(i, dt);
 }
 
 /**
@@ -625,10 +493,9 @@ bool compute_and_check_block_counts(struct fs_settings *const fss) {
 	fss->numBlocks = fss->size * 1024 * 1024 / fss->blockSize;
 
 	const size_t dirTBytes = MAX_SIZE_DIR_ENTRY * fss->entryCount,
-				 fatBytes  = sizeof(fat_entry) * fss->numBlocks,
 				 stBytes   = sizeof(struct fs_settings);
 
-	fss->numMdBlocks = ((fatBytes + dirTBytes + stBytes) / fss->blockSize) + 1;
+	fss->numMdBlocks = ((dirTBytes + stBytes) / fss->blockSize) + 1;
 
 	if (fss->numMdBlocks > fss->numBlocks) {
 		fprintf(stderr,
@@ -638,6 +505,8 @@ bool compute_and_check_block_counts(struct fs_settings *const fss) {
 				"or directory entry count.\n");
 		return false;
 	}
+
+	/* TODO: check if final block in final index is out of bounds */
 
 	return true;
 }

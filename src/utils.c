@@ -39,7 +39,7 @@ char *copy_string(const char *str) {
 	size_t size = strlen(str);
 	char *copy	= malloc(size + 1);
 	if (copy == NULL) {
-		perror("malloc() in copy_string()");
+		perror("malloc() in copy_string()\n");
 		return NULL;
 	}
 
@@ -51,17 +51,17 @@ char *copy_string(const char *str) {
 int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() in read_block()");
+		perror("fseek() in read_block()\n");
 		return -1;
 	}
 
 	/* read chunk */
 	if (fread(buf, 1, blockSize, fs) != blockSize) {
 		if (feof(fs)) {
-			fprintf(stderr, "fread() in read_block - EOF occurred");
+			fprintf(stderr, "fread() in read_block - EOF occurred\n");
 			return -2;
 		} else if (ferror(fs)) {
-			perror("fread() in read_block()");
+			perror("fread() in read_block()\n");
 			return -3;
 		}
 	}
@@ -72,14 +72,14 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 int write_block(size_t blockNo, size_t blockSize, const char *buf) {
 	/* goto requested fpos */
 	if (fseek(fs, blockSize * blockNo, SEEK_SET) == -1) {
-		perror("fseek() in write_block()");
+		perror("fseek() in write_block()\n");
 		return -1;
 	}
 
 	/* write chunk */
 	if (fwrite(buf, 1, blockSize, fs) < blockSize) {
 		if (ferror(fs))
-			perror("fwrite() in write_block()");
+			perror("fwrite() in write_block()\n");
 		return -2;
 	}
 
