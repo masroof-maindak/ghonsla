@@ -20,7 +20,7 @@
 				.nameLen	   = 1,                                            \
 				.name		   = "/",                                          \
 				.size		   = 0,                                            \
-				.parentIdx	   = SIZE_MAX,                                     \
+				.parentIdx	   = 0,                                            \
 				.firstBlockIdx = SIZE_MAX};
 
 #define DIR_TABLE_GARBAGE_ENTRY                                                \

@@ -26,7 +26,7 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	cbreak();
 	keypad(stdscr, TRUE);
 
-	dir_entry *curr = &dt->dirs[ROOT_IDX];
+	dir_entry *currEntry = &dt->dirs[ROOT_IDX];
 	while (!leave) {
 		size_t childCount	= 0;
 		dir_entry **entries = get_directory_entries(cwd, dt, &childCount);
@@ -74,13 +74,15 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 					chdir = true;
 					cwd	  = tmp;
 				}
-				curr = &dt->dirs[cwd];
+				currEntry = &dt->dirs[cwd];
 				break;
 
 			case 'h': /* go up to parent directory */
-				chdir = true;
-				cwd	  = curr->parentIdx;
-				curr  = &dt->dirs[curr->parentIdx];
+				if (cwd != 0) {
+					chdir	  = true;
+					cwd		  = currEntry->parentIdx;
+					currEntry = &dt->dirs[currEntry->parentIdx];
+				}
 				break;
 
 			case 't': /* touch */
