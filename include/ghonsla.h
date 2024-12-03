@@ -3,9 +3,10 @@
 
 #include "filesystem.h"
 
-void tests_deserialise(dir_table *const dt);
-void tests_generate(struct fs_settings *const fss, dir_table *const dt);
-bool init_fs(struct fs_settings *fss, int argc, char **argv,
-			 dir_table *const dt);
+void tests_deserialise(fs_table *const dt);
+void tests_generate(struct fs_settings *const fss, fs_table *const dt,
+					fs_table *const fat);
+bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
+			 fs_table *const fat);
 
 #endif // GHONSLA_H
