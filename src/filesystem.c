@@ -243,7 +243,7 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
 	}
 
 	/* generate list */
-	for (size_t j = 0; j < dt->size; j++) {
+	for (size_t j = 1; j < dt->size; j++) {
 		if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i) {
 			ret[(*n)++] = &dt->dirs[j];
 
@@ -321,7 +321,7 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
  * 'name' is freed.
  */
 bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
-	if (i == SIZE_MAX || !dt->dirs[i].valid)
+	if (i == SIZE_MAX || i == ROOT_IDX || !dt->dirs[i].valid)
 		return false;
 
 	if (!dt->dirs[i].isDir) {
