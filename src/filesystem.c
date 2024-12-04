@@ -111,7 +111,7 @@ int read_file_at(size_t i, char *const retBuf, size_t size,
 		if (size > 0) {
 			bIdx = fat->blocks[bIdx].next;
 			if (bIdx == SIZE_MAX) {
-				fprintf(stderr, "read_file_at(): unexpected EoF reached");
+				fprintf(stderr, "read_file_at(): unexpected EoF reached\n");
 				return -4;
 			}
 		}

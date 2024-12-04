@@ -58,7 +58,7 @@ int read_block(size_t blockNo, size_t blockSize, char *buf) {
 	/* read chunk */
 	if (fread(buf, 1, blockSize, fs) != blockSize) {
 		if (feof(fs)) {
-			fprintf(stderr, "fread() in read_block - EOF occurred");
+			fprintf(stderr, "fread() in read_block - EOF occurred\n");
 			return -2;
 		} else if (ferror(fs)) {
 			perror("fread() in read_block()");
