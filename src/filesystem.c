@@ -448,7 +448,7 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 
 	/* directory table */
 	dt->size = fss->entryCount;
-	dt->dirs = malloc(sizeof(dir_entry) * dt->size);
+	dt->dirs = malloc(sizeof(dt->dirs[0]) * dt->size);
 
 	if (dt->dirs == NULL) {
 		perror("malloc() in deserialise_metadata() - dt->dirs");
@@ -461,7 +461,7 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 
 	/* file allocation table */
 	fat->size	= fss->numBlocks;
-	fat->blocks = malloc(fat->size * sizeof(fat_entry));
+	fat->blocks = malloc(fat->size * sizeof(fat->blocks[0]));
 
 	if (fat->blocks == NULL) {
 		free(dt->dirs);
@@ -469,7 +469,8 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 		return false;
 	}
 
-	memcpy(fat->blocks, buf + size, sizeof(fat_entry) * fat->size);
+	/* FIXME: buf = 45k; fat->blocks = 65k */
+	memcpy(fat->blocks, buf + size, sizeof(fat->blocks[0]) * fat->size);
 
 	return true;
 }
