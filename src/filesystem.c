@@ -10,12 +10,14 @@ extern FILE *fs;
 extern char *optarg;
 extern int optind;
 
-size_t freeListPtr; /* idx of first block in the free chain */
-#define INCREMENT_FREE_LIST_PTR                                                \
-	do {                                                                       \
-		if (freeListPtr != SIZE_MAX)                                           \
-			freeListPtr = fat->blocks[freeListPtr].next;                       \
-	} while (0)
+/**
+ * @brief 'increments' the free list chain by one
+ */
+void increment_free_list_ptr(struct fs_settings *const fss,
+							 const fs_table *const fat) {
+	if (fss->freeListPtr != SIZE_MAX)
+		fss->freeListPtr = fat->blocks[fss->freeListPtr].next;
+}
 
 /**
  * @brief return the index of an entry in a directory table
@@ -140,8 +142,8 @@ int read_file_at(size_t i, char *const retBuf, size_t size,
  * @return 0 on success, negative on failure
  */
 int write_to_file(size_t i, const char *buf, size_t size,
-				  const struct fs_settings *fss, size_t fPos,
-				  const fs_table *dt, const fs_table *fat) {
+				  struct fs_settings *fss, size_t fPos, const fs_table *dt,
+				  const fs_table *fat) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return -1;
 
@@ -159,13 +161,13 @@ int write_to_file(size_t i, const char *buf, size_t size,
 	}
 
 	if (bIdx == SIZE_MAX) { /* file is empty */
-		if (freeListPtr == SIZE_MAX) {
+		if (fss->freeListPtr == SIZE_MAX) {
 			fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
 			return -3;
 		}
 
-		bIdx = dt->dirs[i].firstBlockIdx = freeListPtr;
-		INCREMENT_FREE_LIST_PTR;
+		bIdx = dt->dirs[i].firstBlockIdx = fss->freeListPtr;
+		increment_free_list_ptr(fss, fat);
 		fat->blocks[bIdx].next = SIZE_MAX;
 	}
 
@@ -202,13 +204,13 @@ int write_to_file(size_t i, const char *buf, size_t size,
 				return -6;
 			}
 
-			if (freeListPtr == SIZE_MAX) {
+			if (fss->freeListPtr == SIZE_MAX) {
 				fprintf(stderr, ERR_NO_AVAILABLE_BLOCKS);
 				return -7;
 			}
 
-			bIdx = fat->blocks[bIdx].next = freeListPtr;
-			INCREMENT_FREE_LIST_PTR;
+			bIdx = fat->blocks[bIdx].next = fss->freeListPtr;
+			increment_free_list_ptr(fss, fat);
 			fat->blocks[bIdx].next = SIZE_MAX;
 		}
 	}
@@ -287,7 +289,8 @@ void print_directory_contents(size_t i, const fs_table *const dt) {
  * @pre the final block of a file's content chain has it's 'next' set to
  * SIZE_MAX.
  */
-bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
+bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
+				   struct fs_settings *const fss) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return false;
 
@@ -306,10 +309,10 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
 	bIdx = prev;
 
 	/* Point the end of this file's chain towards the free list */
-	fat->blocks[bIdx].next = freeListPtr;
+	fat->blocks[bIdx].next = fss->freeListPtr;
 
 	/* Set the start of this (now empty) chain as the free list */
-	freeListPtr = dt->dirs[i].firstBlockIdx;
+	fss->freeListPtr = dt->dirs[i].firstBlockIdx;
 
 	dt->dirs[i].firstBlockIdx = SIZE_MAX;
 	dt->dirs[i].size		  = 0;
@@ -320,16 +323,17 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat) {
  * @brief Delete a file or recursively, the contents of a directory. The
  * 'name' is freed.
  */
-bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat) {
+bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
+					  struct fs_settings *const fss) {
 	if (i == SIZE_MAX || i == ROOT_IDX || !dt->dirs[i].valid)
 		return false;
 
 	if (!dt->dirs[i].isDir) {
-		truncate_file(i, dt, fat);
+		truncate_file(i, dt, fat, fss);
 	} else {
 		for (size_t j = 0; j < dt->size; j++)
 			if (dt->dirs[j].valid && dt->dirs[j].parentIdx == i)
-				remove_dir_entry(j, dt, fat);
+				remove_dir_entry(j, dt, fat, fss);
 	}
 
 	free(dt->dirs[i].name);
@@ -469,7 +473,6 @@ bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 		return false;
 	}
 
-	/* FIXME: buf = 45k; fat->blocks = 65k */
 	memcpy(fat->blocks, buf + size, sizeof(fat->blocks[0]) * fat->size);
 
 	return true;
@@ -502,7 +505,7 @@ void write_dir_entry_to_buf(const dir_entry *const e, char *const b,
 /**
  * @param nmb number of metadata blocks
  */
-void clear_out_fat(size_t nmb, fs_table *fat) {
+void clear_out_fat(size_t nmb, fs_table *fat, struct fs_settings *const fss) {
 	/* zero out blocks holding metadata */
 	memset(fat->blocks, 0, nmb * sizeof(fat_entry));
 
@@ -514,7 +517,7 @@ void clear_out_fat(size_t nmb, fs_table *fat) {
 	fat->blocks[fat->size - 1].next = SIZE_MAX;
 
 	/* initialise free chain */
-	freeListPtr = nmb;
+	fss->freeListPtr = nmb;
 }
 
 /**
@@ -545,7 +548,8 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
  * @param nmb number of blocks used for metadata (i.e tables and other
  * information to persist on disk)
  */
-bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
+bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
+				  struct fs_settings *const fss) {
 	fat->size	= nb;
 	fat->blocks = malloc(fat->size * sizeof(fat_entry));
 
@@ -554,7 +558,7 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
 		return false;
 	}
 
-	clear_out_fat(nmb, fat);
+	clear_out_fat(nmb, fat, fss);
 	return true;
 }
 
@@ -565,7 +569,7 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *fat) {
  * should perform all relevant cleanup first, namely freeing the global
  * structures.
  */
-bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
+bool init_new_fs(struct fs_settings *const fss, fs_table *dt, fs_table *fat) {
 	/* open file for writing */
 	if ((fs = fopen(FS_NAME, "w+")) == NULL) {
 		perror("fopen() in init_new_fs()");
@@ -576,7 +580,7 @@ bool init_new_fs(const struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	if (!init_new_dir_t(fss->entryCount, dt))
 		goto fclose;
 
-	if (!init_new_fat(fss->numBlocks, fss->numMdBlocks, fat)) {
+	if (!init_new_fat(fss->numBlocks, fss->numMdBlocks, fat, fss)) {
 		free(dt->dirs);
 		goto fclose;
 	}
@@ -614,8 +618,8 @@ fclose:
  */
 void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	for (size_t i = 1; i < dt->size; i++)
-		remove_dir_entry(i, dt, fat);
-	clear_out_fat(fss->numMdBlocks, fat);
+		remove_dir_entry(i, dt, fat, fss);
+	clear_out_fat(fss->numMdBlocks, fat, fss);
 }
 
 /**

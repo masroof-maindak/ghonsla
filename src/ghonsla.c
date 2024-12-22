@@ -42,8 +42,9 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 		post_menu(cwdMenu);
 		menuIdx = item_index(current_item(cwdMenu));
 		mvprintw(LINES - 2, 0,
-				 "Size (MBs): %zu | Entry Count: %zu | Block Size: %zu",
-				 fss->size, fss->entryCount, fss->blockSize);
+				 "Size (MBs): %zu | Entry Count: %zu | Block Size: %zu | "
+				 "FreeListPtr: %zu",
+				 fss->size, fss->entryCount, fss->blockSize, fss->freeListPtr);
 		mvprintw(
 			LINES - 1, 0,
 			"Max Blocks: %zu | Number Blocks FS: %zu | Number MD Blocks: %zu",
@@ -69,6 +70,9 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 
 			case '\n':
 			case 'l': /* step into child directory */
+				if (childCount <= 0)
+					break;
+
 				tmp = get_index_of_dir_entry(entries[menuIdx]->name, cwd, dt);
 				if (entries[menuIdx]->isDir) {
 					chdir = true;
@@ -107,7 +111,7 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 
 			case 'r': /* remove */
 				tmp = get_index_of_dir_entry(entries[menuIdx]->name, cwd, dt);
-				remove_dir_entry(tmp, dt, fat);
+				remove_dir_entry(tmp, dt, fat, fss);
 				chdir = true;
 				break;
 
@@ -220,7 +224,7 @@ void tests_generate(struct fs_settings *const fss, fs_table *const dt,
 	create_dir_entry(f1name, ROOT_IDX, false, dt);
 
 	size_t idx = get_index_of_dir_entry(f1name, ROOT_IDX, dt);
-	remove_dir_entry(idx, dt, fat);
+	remove_dir_entry(idx, dt, fat, fss);
 	f1name = NULL;
 
 	create_dir_entry(f2name, 1, false, dt);
