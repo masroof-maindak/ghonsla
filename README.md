@@ -2,7 +2,7 @@
 
 ![dinosaur-eggs](.github/assets/dinosaur-eggs.jpg)
 
-Ghonsla is a virtual, persistent, FAT-like filesystem that advertises directory management, partition creation/formatting, file operations, and a frankly repulsive ncurses-based TUI for directory navigation.
+Ghonsla is a virtual, persistent, FAT-like filesystem that advertises directory management, partition creation/formatting and file operations APIs, alongside a frankly repulsive ncurses-based TUI for directory navigation.
 
 ## Usage
 
