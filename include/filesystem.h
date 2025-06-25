@@ -32,8 +32,8 @@ struct fs_settings {
 };
 
 typedef struct {
-	bool valid;				/* entry holds a file or directory currently */
-	bool isDir;				/* entry is a directory */
+	_bool valid;			/* entry holds a file or directory currently */
+	_bool isDir;			/* entry is a directory */
 	unsigned short nameLen; /* name's length */
 	char *name;				/* dir/file's name */
 	size_t size;			/* number of bytes a file occupies */
@@ -56,32 +56,32 @@ typedef struct {
 } fs_table;
 
 /* persistence */
-bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
-						  fs_table *const fat);
-bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
-						const fs_table *const fat);
-bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
-							   size_t *const i);
+_bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
+						   fs_table *const fat);
+_bool serialise_metadata(const struct fs_settings *fss,
+						 const fs_table *const dt, const fs_table *const fat);
+_bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
+								size_t *const i);
 void write_dir_entry_to_buf(const dir_entry *const e, char *const b, size_t *i);
 
 /* partition management */
-bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
-				  struct fs_settings *const fss);
-bool init_new_dir_t(int entryCount, fs_table *dt);
-bool init_new_fs(struct fs_settings *const fss, fs_table *dt, fs_table *fat);
+_bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
+				   struct fs_settings *const fss);
+_bool init_new_dir_t(int entryCount, fs_table *dt);
+_bool init_new_fs(struct fs_settings *const fss, fs_table *dt, fs_table *fat);
 void clear_out_fat(size_t nmb, fs_table *fat, struct fs_settings *const fss);
 void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat);
 
 /* directory-table generic */
 size_t get_index_of_dir_entry(const char *name, size_t cwd, const fs_table *dt);
-bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt);
-bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
-					  struct fs_settings *const fss);
-bool rename_dir_entry(char *newName, size_t i, fs_table *dt);
+_bool create_dir_entry(char *name, size_t cwd, _bool isDir, const fs_table *dt);
+_bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
+					   struct fs_settings *const fss);
+_bool rename_dir_entry(char *newName, size_t i, fs_table *dt);
 
 /* file-specific */
-bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
-				   struct fs_settings *const fss);
+_bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
+					struct fs_settings *const fss);
 int read_file_at(size_t i, char *const buf, size_t size,
 				 struct fs_settings *fss, size_t fPos, const fs_table *dt,
 				 const fs_table *fat);
@@ -98,7 +98,7 @@ dir_entry **get_directory_entries(size_t i, const fs_table *const dt,
 void print_directory_contents(size_t i, const fs_table *const dt);
 
 /* fs_settings */
-bool parse_config_args(struct fs_settings *fss, int argc, char **argv);
-bool compute_and_check_block_counts(struct fs_settings *const fss);
+_bool parse_config_args(struct fs_settings *fss, int argc, char **argv);
+_bool compute_and_check_block_counts(struct fs_settings *const fss);
 
 #endif // FILESYSTEM_H

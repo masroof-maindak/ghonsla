@@ -42,7 +42,7 @@ size_t get_index_of_dir_entry(const char *name, size_t cwd,
  * `cwd` index, if a free entry is found. `name` must point to a
  * heap-allocated string.
  */
-bool create_dir_entry(char *name, size_t cwd, bool isDir, const fs_table *dt) {
+_bool create_dir_entry(char *name, size_t cwd, _bool isDir, const fs_table *dt) {
 	/* find free spot & and verify we don't exist already */
 	if (get_index_of_dir_entry(name, cwd, dt) != SIZE_MAX)
 		return false;
@@ -289,7 +289,7 @@ void print_directory_contents(size_t i, const fs_table *const dt) {
  * @pre the final block of a file's content chain has it's 'next' set to
  * SIZE_MAX.
  */
-bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
+_bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
 				   struct fs_settings *const fss) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid || dt->dirs[i].isDir)
 		return false;
@@ -323,7 +323,7 @@ bool truncate_file(size_t i, fs_table *dt, fs_table *fat,
  * @brief Delete a file or recursively, the contents of a directory. The
  * 'name' is freed.
  */
-bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
+_bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
 					  struct fs_settings *const fss) {
 	if (i == SIZE_MAX || i == ROOT_IDX || !dt->dirs[i].valid)
 		return false;
@@ -345,7 +345,7 @@ bool remove_dir_entry(size_t i, fs_table *dt, fs_table *fat,
  * @brief renames an entry in the global directory table. The old 'name' is
  * freed. On failure, the user should free newName
  */
-bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
+_bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 	if (i == SIZE_MAX || !dt->dirs[i].valid)
 		return false;
 
@@ -363,7 +363,7 @@ bool rename_dir_entry(char *newName, size_t i, fs_table *dt) {
 /**
  * @brief writes all metadata to a buffer and then the filesystem
  */
-bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
+_bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
 						const fs_table *const fat) {
 	size_t size = 0;
 	char buf[fss->numMdBlocks * fss->blockSize];
@@ -393,7 +393,7 @@ bool serialise_metadata(const struct fs_settings *fss, const fs_table *const dt,
  * @brief reads a buf at the i'th index to obtain a directory table entry,
  * allocating space for names
  */
-bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
+_bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 							   size_t *const i) {
 	memcpy(&e->valid, b + *i, sizeof(e->valid));
 	*i += sizeof(e->valid);
@@ -430,7 +430,7 @@ bool obtain_dir_entry_from_buf(dir_entry *const e, const char *const b,
 /**
  * @brief recovers all metadata from the filesystem to the relevant structures
  */
-bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
+_bool deserialise_metadata(struct fs_settings *const fss, fs_table *const dt,
 						  fs_table *const fat) {
 
 	/* obtain settings */
@@ -524,7 +524,7 @@ void clear_out_fat(size_t nmb, fs_table *fat, struct fs_settings *const fss) {
  * @brief creates a directory table in memory, populates it with the root
  * entry and garbage entries
  */
-bool init_new_dir_t(int entryCount, fs_table *dt) {
+_bool init_new_dir_t(int entryCount, fs_table *dt) {
 	dt->size = entryCount;
 	dt->dirs = malloc(sizeof(*dt->dirs) * dt->size);
 
@@ -548,7 +548,7 @@ bool init_new_dir_t(int entryCount, fs_table *dt) {
  * @param nmb number of blocks used for metadata (i.e tables and other
  * information to persist on disk)
  */
-bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
+_bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
 				  struct fs_settings *const fss) {
 	fat->size	= nb;
 	fat->blocks = malloc(fat->size * sizeof(fat_entry));
@@ -569,7 +569,7 @@ bool init_new_fat(size_t nb, size_t nmb, fs_table *fat,
  * should perform all relevant cleanup first, namely freeing the global
  * structures.
  */
-bool init_new_fs(struct fs_settings *const fss, fs_table *dt, fs_table *fat) {
+_bool init_new_fs(struct fs_settings *const fss, fs_table *dt, fs_table *fat) {
 	/* open file for writing */
 	if ((fs = fopen(FS_NAME, "w+")) == NULL) {
 		perror("fopen() in init_new_fs()");
@@ -626,7 +626,7 @@ void format_fs(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
  * @brief determines the number of blocks and metadata blocks from other
  * provided information and updates the settings accordingly
  */
-bool compute_and_check_block_counts(struct fs_settings *const fss) {
+_bool compute_and_check_block_counts(struct fs_settings *const fss) {
 	fss->numBlocks = fss->size * 1024 * 1024 / fss->blockSize;
 
 	const size_t dirTBytes = MAX_SIZE_DIR_ENTRY * fss->entryCount,
@@ -651,7 +651,7 @@ bool compute_and_check_block_counts(struct fs_settings *const fss) {
  * @brief parse user args for filesystem creation. Unset or erroneous
  * arguments are defaulted.
  */
-bool parse_config_args(struct fs_settings *fss, int argc, char **argv) {
+_bool parse_config_args(struct fs_settings *fss, int argc, char **argv) {
 	int opt;
 	*fss = DEFAULT_CFG;
 

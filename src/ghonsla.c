@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include <menu.h>
-#undef bool
+#undef _bool
 
 #include "../include/defaults.h"
 #include "../include/ghonsla.h"
@@ -16,7 +16,7 @@ void ui(struct fs_settings *fss, fs_table *dt, fs_table *fat) {
 	int cwd		= ROOT_IDX;
 	int menuIdx = -1;
 	int input;
-	bool chdir = false, leave = false;
+	_bool chdir = false, leave = false;
 	size_t tmp;
 	char *name = NULL;
 
@@ -159,7 +159,7 @@ int main(int argc, char **argv) {
 /**
  * @details opens the filesystem file if it exists, or creates a new one if not
  */
-bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
+_bool init_fs(struct fs_settings *fss, int argc, char **argv, fs_table *const dt,
 			 fs_table *const fat) {
 
 	/* couldn't open */
